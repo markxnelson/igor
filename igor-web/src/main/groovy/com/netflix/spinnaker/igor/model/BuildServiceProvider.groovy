@@ -19,5 +19,6 @@ package com.netflix.spinnaker.igor.model
 enum BuildServiceProvider {
   JENKINS,
   TRAVIS,
-  GITLAB_CI
+  GITLAB_CI,
+  WERCKER
 }
