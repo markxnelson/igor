@@ -19,6 +19,7 @@ package com.netflix.spinnaker.igor.build
 import com.netflix.spinnaker.igor.config.GitlabCiProperties
 import com.netflix.spinnaker.igor.config.JenkinsProperties
 import com.netflix.spinnaker.igor.config.TravisProperties
+import com.netflix.spinnaker.igor.config.WerckerProperties
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
 import com.netflix.spinnaker.igor.service.BuildMasters
 import groovy.transform.InheritConstructors
@@ -52,6 +53,9 @@ class InfoController {
     @Autowired(required = false)
     GitlabCiProperties gitlabCiProperties
 
+    @Autowired(required = false)
+    WerckerProperties werckerProperties
+
     @RequestMapping(value = '/masters', method = RequestMethod.GET)
     List<Object> listMasters(@RequestParam(value = "showUrl", defaultValue = "false") String showUrl) {
         if (showUrl == 'true') {
@@ -74,6 +78,15 @@ class InfoController {
                     [
                         "name": it.name,
                         "address": it.address
+                    ]
+                }
+            )
+            masterList.addAll(
+                werckerProperties?.masters.collect {
+                    [
+                        "name": it.name,
+                        "address": it.address,
+                        "organizations": it.organizations.join(',')
                     ]
                 }
             )

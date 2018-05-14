@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Schibsted ASA.
+ * Copyright 2014 Netflix, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,26 @@
  * limitations under the License.
  */
 
-package com.netflix.spinnaker.igor.model
+package com.netflix.spinnaker.igor.wercker
 
-enum BuildServiceProvider {
-  JENKINS,
-  TRAVIS,
-  GITLAB_CI,
-  WERCKER
+import com.netflix.spinnaker.igor.wercker.model.Application
+import retrofit.http.GET
+import retrofit.http.Path
+/**
+ * Interface for interacting with a Wercker service using retrofit
+ */
+interface WerckerClient {
+
+    /**
+     * Get all Applications for the given owner
+     * @param owner - the application owner
+     * @return
+     */
+    @GET('/api/v3/applications/{owner}')
+    List<Application> getApplicationsByOwner(@Path('owner') owner)
+
+
+
+
+
 }
