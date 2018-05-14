@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Schibsted ASA.
+ * Copyright 2014 Netflix, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,27 @@
  * limitations under the License.
  */
 
-package com.netflix.spinnaker.igor.model
+package com.netflix.spinnaker.igor.service
 
-enum BuildServiceProvider {
-  JENKINS,
-  TRAVIS,
-  GITLAB_CI,
-  WERCKER
+import java.util.List
+import java.util.Map
+
+import retrofit.http.Body
+import retrofit.http.GET
+import retrofit.http.POST
+import retrofit.http.Path
+import retrofit.http.Query
+
+/**
+ * Posts new build executions to echo
+ */
+interface Front50Service {
+  //
+  // Pipeline-related
+  //
+  @GET('/pipelines')
+  List<Map> getAllPipelineConfigs()
+
+  @GET('/pipelines/{app}')
+  List<Map> getPipelineConfigsForApplication(@Path("app") String app, @Query("refresh") boolean refresh)
 }

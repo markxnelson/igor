@@ -1,0 +1,327 @@
+/*
+ * Copyright 2014 Netflix, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.netflix.spinnaker.igor.wercker
+
+import com.netflix.discovery.DiscoveryClient
+import com.netflix.spectator.api.Registry
+import com.netflix.spinnaker.igor.IgorConfigurationProperties
+import com.netflix.spinnaker.igor.build.model.GenericBuild
+import com.netflix.spinnaker.igor.build.model.GenericProject
+import com.netflix.spinnaker.igor.build.model.Result
+import com.netflix.spinnaker.igor.config.WerckerProperties
+import com.netflix.spinnaker.igor.history.EchoService
+import com.netflix.spinnaker.igor.history.model.GenericBuildContent
+import com.netflix.spinnaker.igor.service.Front50Service
+
+import com.netflix.spinnaker.igor.history.model.GenericBuildEvent
+import com.netflix.spinnaker.igor.model.BuildServiceProvider
+
+import com.netflix.spinnaker.igor.polling.CommonPollingMonitor
+import com.netflix.spinnaker.igor.polling.DeltaItem
+import com.netflix.spinnaker.igor.polling.PollContext
+import com.netflix.spinnaker.igor.polling.PollingDelta
+import com.netflix.spinnaker.igor.service.BuildMasters
+import com.netflix.spinnaker.igor.wercker.model.Run
+import groovy.time.TimeCategory
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.stereotype.Service
+import retrofit.RetrofitError
+
+import javax.annotation.PreDestroy
+
+import java.util.Map.Entry
+import java.util.stream.Collectors
+
+import static net.logstash.logback.argument.StructuredArguments.kv
+
+/**
+ * Monitors new wercker builds
+ */
+@Service
+@SuppressWarnings('CatchException')
+@ConditionalOnProperty('wercker.enabled')
+class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePollingDelta> {
+
+    private final WerckerCache cache
+    private final BuildMasters buildMasters
+    private final boolean pollingEnabled
+    private final Optional<EchoService> echoService
+    private final Optional<Front50Service> front50
+    private final WerckerProperties werckerProperties
+
+    @Autowired
+    WerckerBuildMonitor(IgorConfigurationProperties properties,
+                        Registry registry,
+                        Optional<DiscoveryClient> discoveryClient,
+                        WerckerCache cache,
+                        BuildMasters buildMasters,
+                        @Value('${wercker.polling.enabled:true}') boolean pollingEnabled,
+                        Optional<EchoService> echoService,
+						Optional<Front50Service> front50Service,
+                        WerckerProperties werckerProperties) {
+        super(properties, registry, discoveryClient)
+        this.cache = cache
+        this.buildMasters = buildMasters
+        this.pollingEnabled = pollingEnabled
+        this.echoService = echoService
+		this.front50 = front50Service
+        this.werckerProperties = werckerProperties
+    }
+
+    @Override
+    String getName() {
+        "WerckerBuildMonitor"
+    }
+
+    @Override
+    boolean isInService() {
+        pollingEnabled && super.isInService()
+    }
+
+    @Override
+    void initialize() {
+    }
+
+    @Override
+    void poll(boolean sendEvents) {
+        long startTime = System.currentTimeMillis()
+        log.info "WerckerBuildMonitor Polling cycle started: ${new Date()}, front50:${front50.isPresent()} echoService:${echoService.isPresent()} "
+        buildMasters.filteredMap(BuildServiceProvider.WERCKER).keySet().parallelStream().forEach(
+            { master -> pollSingle(new PollContext(master, !sendEvents)) }
+        )
+        log.info "WerckerBuildMonitor Polling cycle done in ${System.currentTimeMillis() - startTime}ms"
+    }
+
+    @PreDestroy
+    void stop() {
+        log.info('Stopped')
+        if (!worker.isUnsubscribed()) {
+            worker.unsubscribe()
+        }
+    }
+
+    /**
+     * Gets a list of pipelines for this master & processes runs between last poll stamp and a sliding upper bound stamp,
+     * the cursor will be used to advanced to the upper bound when all builds are completed in the commit phase.
+     */
+    @Override
+    protected PipelinePollingDelta generateDelta(PollContext ctx) {
+        String master = ctx.partitionName
+        log.info("Checking for new builds for $master")
+        def startTime = System.currentTimeMillis()
+
+        List<PipelineDelta> delta = []
+
+        WerckerService werckerService = buildMasters.map[master] as WerckerService
+		if (front50.isPresent()) {
+            Set<String> pipelines = getConfiguredJobs(master);
+            pipelines.forEach( { pipeline -> processRuns(werckerService, master, pipeline, delta, null) } );
+		} else {
+			long since = System.currentTimeMillis() - (Long.valueOf(getPollInterval() * 2 * 1000))
+			Map<String, List<Run>> runs = werckerService.getRunsSince(since);
+			runs.keySet().forEach( { pipeline ->
+			    processRuns(werckerService, master, pipeline, delta, runs.get(pipeline)) 
+			} );
+		}
+        log.debug("Took ${System.currentTimeMillis() - startTime}ms to retrieve Wercker pipelines (master: {})", kv("master", master))
+        return new PipelinePollingDelta(master: master, items: delta)
+    }
+	
+	Set<String> getConfiguredJobs(String master) {
+		Set<String> jobs = [];
+		front50.get().getAllPipelineConfigs().forEach({ pipeline ->
+			pipeline['triggers'].forEach({ trigger ->
+				if (trigger['enabled'] && trigger['type'] == 'wercker' && trigger['master'] == master) {
+					log.debug "configured Trigger for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${trigger}"
+					jobs.add(trigger['job']);
+				}
+			})		
+			pipeline['stages'].forEach({ stage ->
+				if (stage['type'] == 'wercker' && stage['master'] == master) {
+					log.debug "configured Stage for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${stage}"
+					jobs.add(stage['job']);
+				}
+			})
+		})
+		return jobs;
+	}
+	
+	static Comparator<Run> finishedAtComparator = new Comparator<Run>() {
+		@Override
+		public int compare(Run r1, Run r2) {
+			if (r1.finishedAt != null && r2.finishedAt != null) {
+			    return r1.finishedAt.fastTime - r2.finishedAt.fastTime;
+			} else {
+			    return (r1.finishedAt == null) ? ((r2.finishedAt == null)? 0 : -1) : 1;
+			}
+		}
+	};
+
+	Run getLastFinishedAt(List<Run> runs) {
+		return Collections.max(runs, finishedAtComparator);
+	}
+
+	static Comparator<Run> startedAtComparator = new Comparator<Run>() {
+		@Override
+		public int compare(Run r1, Run r2) {
+			if (r1.startedAt != null && r2.startedAt != null) {
+				return r1.startedAt.fastTime - r2.startedAt.fastTime;
+			} else {
+				return (r1.startedAt == null) ? ((r2.startedAt == null)? 0 : -1) : 1;
+			}
+		}
+	};
+
+	Run getLastStartedAt(List<Run> runs) {
+		return Collections.max(runs, startedAtComparator);
+	}
+
+	/**
+	 * wercker.pipeline = project|job
+	 * wercker.run = build
+	 */
+    private void processRuns( WerckerService werckerService, String master, String pipeline, 
+		List<PipelineDelta> delta, List<Run> runs) {
+		List<Run> allRuns = runs? runs : werckerService.getBuilds(pipeline);
+        log.info "Wercker polling pipeline: ${pipeline}"
+        if (allRuns.empty) {
+            log.debug("[{}:{}] has no runs skipping...", kv("master", master), kv("pipeline", pipeline))
+            return
+        }
+		Run lastStartedAt = getLastStartedAt(allRuns);
+        try {
+            Long cursor = cache.getLastPollCycleTimestamp(master, pipeline)
+			//The last build/run
+            Long lastBuildStamp = lastStartedAt.startedAt.fastTime //job.lastBuild.timestamp as Long
+            Date upperBound     = lastStartedAt.startedAt //new Date(lastBuildStamp)
+            if (cursor == lastBuildStamp) {
+                log.debug("[${master}:${pipeline}] is up to date. skipping")
+                return
+            }
+			cache.updateBuildNumbers(master, pipeline, allRuns)
+			List<Run> allBuilds = allRuns.findAll { it?.startedAt?.fastTime > cursor }
+            if (!cursor && !igorProperties.spinnaker.build.handleFirstBuilds) {
+                cache.setLastPollCycleTimestamp(master, pipeline, lastBuildStamp)
+                return
+            }
+            List<Run> currentlyBuilding = allBuilds.findAll { it.finishedAt == null }
+			//For initial run (cursor == null), use only the latest finished one
+            List<Run> completedBuilds = cursor ? allBuilds.findAll { it.finishedAt != null } : [ getLastFinishedAt(allBuilds) ]
+            log.debug("[${master}:${pipeline}] currentlyBuilding: ${currentlyBuilding}" )
+            log.debug("[${master}:${pipeline}]   completedBuilds: ${completedBuilds}" )
+            cursor = cursor?:lastBuildStamp
+            Date lowerBound = new Date(cursor)
+            if (!igorProperties.spinnaker.build.processBuildsOlderThanLookBackWindow) {
+                completedBuilds = onlyInLookBackWindow(completedBuilds)
+            }
+            delta.add(new PipelineDelta(
+                cursor: cursor,
+                name: pipeline,
+                lastBuildStamp: lastBuildStamp,
+                upperBound: upperBound,
+                lowerBound: lowerBound,
+                completedBuilds: completedBuilds,
+                runningBuilds: currentlyBuilding
+            ))
+        } catch (e) {
+            log.error("Error processing runs for [{}:{}]", kv("master", master), kv("pipeline", pipeline), e)
+            if (e.cause instanceof RetrofitError) {
+                def re = (RetrofitError) e.cause
+                log.error("Error communicating with jenkins for [{}:{}]: {}", kv("master", master), kv("pipeline", pipeline), kv("url", re.url), re);
+            }
+        }
+    }
+
+    private List<Run> onlyInLookBackWindow(List<Run> builds) {
+        use(TimeCategory) { 
+            def offsetSeconds = pollInterval.seconds
+            def lookBackWindowMins = igorProperties.spinnaker.build.lookBackWindowMins.minutes
+            Date lookBackDate = (offsetSeconds + lookBackWindowMins).ago
+            return builds.stream().filter({
+                Date buildEndDate = it.finishedAt
+                return buildEndDate.after(lookBackDate)
+            }).collect(Collectors.toList())
+        }
+    }
+
+	private GenericBuild toBuild(String master, String pipeline, Run run) {
+		Result res = (run.finishedAt == null) ? Result.BUILDING : (run.result.equals("passed")? Result.SUCCESS : Result.FAILURE)
+		return new GenericBuild (
+					building: (run.finishedAt == null),
+					result: res,
+					number: cache.getBuildNumber(master, pipeline, run.id),
+					timestamp: run.startedAt.fastTime as String,
+					id: run.id,
+					url: run.url
+				);
+	}
+
+    @Override
+    protected void commitDelta(PipelinePollingDelta delta, boolean sendEvents) {
+        String master = delta.master
+        delta.items.parallelStream().forEach { pipeline -> //job = pipeline
+            // post events for finished builds
+            pipeline.completedBuilds.forEach { run -> //build = run
+                Boolean eventPosted = cache.getEventPosted(master, pipeline.name, run.id)
+				GenericBuild build = toBuild(master, pipeline.name, run)
+                if (!eventPosted && echoService.isPresent() && sendEvents) {
+                    postEvent(new GenericProject(pipeline.name, build), master)
+                    log.info("[${master}:${pipeline.name}]:${build.id} event posted")
+                    cache.setEventPosted(master, pipeline.name, run.id)
+                }
+            }
+
+            // advance cursor when all builds have completed in the interval
+            if (pipeline.runningBuilds.isEmpty()) {
+                log.info("[{}:{}] has no other builds between [${pipeline.lowerBound} - ${pipeline.upperBound}], advancing cursor to ${pipeline.lastBuildStamp}", kv("master", master), kv("pipeline", pipeline.name))
+                cache.pruneOldMarkers(master, pipeline.name, pipeline.cursor)
+                cache.setLastPollCycleTimestamp(master, pipeline.name, pipeline.lastBuildStamp)
+            }
+        }
+    }
+
+    @Override
+    protected Integer getPartitionUpperThreshold(String partition) {
+        return werckerProperties.masters.find { partition == it.name }?.itemUpperThreshold
+    }
+
+    private void postEvent(GenericProject project, String master) {
+        if (!echoService.isPresent()) {
+            log.warn("Cannot send build notification: Echo is not configured")
+            registry.counter(missedNotificationId.withTag("monitor", getClass().simpleName)).increment()
+            return
+        }
+        echoService.get().postEvent(new GenericBuildEvent(content: new GenericBuildContent(project: project, master: master, type: "wercker")))
+    }
+
+    private static class PipelinePollingDelta implements PollingDelta<PipelineDelta> {
+        String master
+        List<PipelineDelta> items
+    }
+
+    private static class PipelineDelta implements DeltaItem {
+        Long cursor
+        String name
+        Long lastBuildStamp
+        Date lowerBound
+        Date upperBound
+        List<Run> completedBuilds
+        List<Run> runningBuilds
+    }
+}

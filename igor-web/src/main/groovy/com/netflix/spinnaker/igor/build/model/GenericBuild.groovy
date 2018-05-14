@@ -32,6 +32,7 @@ class GenericBuild {
     List<GenericArtifact> artifacts
     List<TestResults> testResults
     String url
+	String id
     @JsonProperty("scm")
     List<GenericGitRevision> genericGitRevisions
 
