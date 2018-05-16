@@ -86,7 +86,7 @@ class InfoController {
                     [
                         "name": it.name,
                         "address": it.address,
-                        "organizations": it.organizations.join(',')
+                        "organizations": it.organizations ? it.organizations.join(',') : "[]"
                     ]
                 }
             )
