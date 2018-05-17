@@ -17,5 +17,11 @@ class Owner {
     String name
     String type
     String userId
+    OwnerMetadata meta
 
+    static class OwnerMetadata {
+        String username
+        String type
+        boolean werckerEmployee
+    }
 }

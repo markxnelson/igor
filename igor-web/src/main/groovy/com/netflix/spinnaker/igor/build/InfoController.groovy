@@ -57,42 +57,63 @@ class InfoController {
     WerckerProperties werckerProperties
 
     @RequestMapping(value = '/masters', method = RequestMethod.GET)
-    List<Object> listMasters(@RequestParam(value = "showUrl", defaultValue = "false") String showUrl) {
+    List<Object> listMasters(
+        @RequestParam(value = "showUrl", defaultValue = "false") String showUrl,
+        @RequestParam(value = "type", defaultValue = "") String type) {
+
+        BuildServiceProvider providerType = (type == "") ? null :
+            BuildServiceProvider.valueOf(type.toUpperCase())
+
         if (showUrl == 'true') {
-            List<Object> masterList = jenkinsProperties?.masters.collect {
-                [
-                    "name"   : it.name,
-                    "address": it.address
-                ]
+            List<Object> masterList = []
+            if (!providerType || providerType == BuildServiceProvider.JENKINS) {
+                masterList.addAll(jenkinsProperties?.masters.collect {
+                    [
+                        "name"   : it.name,
+                        "address": it.address
+                    ]
+                })
             }
-            masterList.addAll(
-                travisProperties?.masters.collect {
-                    [
-                        "name": it.name,
-                        "address": it.address
-                    ]
-                }
-            )
-            masterList.addAll(
-                gitlabCiProperties?.masters.collect {
-                    [
-                        "name": it.name,
-                        "address": it.address
-                    ]
-                }
-            )
-            masterList.addAll(
-                werckerProperties?.masters.collect {
-                    [
-                        "name": it.name,
-                        "address": it.address,
-                        "organizations": it.organizations ? it.organizations.join(',') : "[]"
-                    ]
-                }
-            )
+            if (!providerType || providerType == BuildServiceProvider.TRAVIS) {
+                masterList.addAll(
+                    travisProperties?.masters.collect {
+                        [
+                            "name"   : it.name,
+                            "address": it.address
+                        ]
+                    }
+                )
+            }
+            if (!providerType || providerType == BuildServiceProvider.GITLAB_CI) {
+                masterList.addAll(
+                    gitlabCiProperties?.masters.collect {
+                        [
+                            "name"   : it.name,
+                            "address": it.address
+                        ]
+                    }
+                )
+            }
+            if (!providerType || providerType == BuildServiceProvider.WERCKER) {
+                masterList.addAll(
+                    werckerProperties?.masters.collect {
+                        [
+                            "name"         : it.name,
+                            "address"      : it.address,
+                            "organizations": it.organizations ? it.organizations.join(',') : "[]"
+                        ]
+                    }
+                )
+            }
             return masterList
         } else {
-            return buildMasters.map.keySet().sort()
+            //Filter by provider type if it is specified
+            if (providerType) {
+                return buildMasters.map.findResults {
+                    k, v -> v.buildServiceProvider() == providerType ? k : null}.sort()
+            } else {
+                return buildMasters.map.keySet().sort()
+            }
         }
     }
 

@@ -17,8 +17,11 @@
 package com.netflix.spinnaker.igor.wercker
 
 import com.netflix.spinnaker.igor.wercker.model.Application
+import com.netflix.spinnaker.igor.wercker.model.Run
 import retrofit.http.GET
 import retrofit.http.Path
+import retrofit.http.Query
+
 /**
  * Interface for interacting with a Wercker service using retrofit
  */
@@ -32,8 +35,10 @@ interface WerckerClient {
     @GET('/api/v3/applications/{owner}')
     List<Application> getApplicationsByOwner(@Path('owner') owner)
 
+    @GET('/api/v3/runs?applicationId={applicationId}')
+    List<Run> getRunsForApplication(@Query('applicationId') String applicationId)
 
-
-
+    @GET('/api/v3/runs?pipelineId={pipelineId}')
+    List<Run> getRunsForPipeline(@Query('pipelineId') String pipelineId)
 
 }
