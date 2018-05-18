@@ -17,8 +17,11 @@
 package com.netflix.spinnaker.igor.wercker
 
 import com.netflix.spinnaker.igor.wercker.model.Application
+import com.netflix.spinnaker.igor.wercker.model.Pipeline
 import com.netflix.spinnaker.igor.wercker.model.Run
+import com.netflix.spinnaker.igor.wercker.model.Workflow
 import retrofit.http.GET
+import retrofit.http.Header
 import retrofit.http.Path
 import retrofit.http.Query
 
@@ -28,17 +31,38 @@ import retrofit.http.Query
 interface WerckerClient {
 
     /**
-     * Get all Applications for the given owner
+     * Get Applications for the given owner
      * @param owner - the application owner
      * @return
      */
     @GET('/api/v3/applications/{owner}')
-    List<Application> getApplicationsByOwner(@Path('owner') owner)
+    List<Application> getApplicationsByOwner(
+        @Header('Authorization') String authHeader,
+        @Path('owner') owner)
 
-    @GET('/api/v3/runs?applicationId={applicationId}')
-    List<Run> getRunsForApplication(@Query('applicationId') String applicationId)
+    @GET('/api/applications')
+    List<Application> getApplications(@Header('Authorization') String authHeader)
 
-    @GET('/api/v3/runs?pipelineId={pipelineId}')
-    List<Run> getRunsForPipeline(@Query('pipelineId') String pipelineId)
+    @GET('/api/v3/runs')
+    List<Run> getRunsForApplication(
+        @Header('Authorization') String authHeader,
+        @Query('applicationId') String applicationId)
+
+    @GET('/api/v3/runs')
+    List<Run> getRunsForPipeline(
+        @Header('Authorization') String authHeader,
+        @Query('pipelineId') String pipelineId)
+
+    @GET('/api/v3/workflows')
+    List<Workflow> getWorkflowsForApplication(
+        @Header('Authorization') String authHeader,
+        @Query('applicationId') String applicationId)
+
+    @GET('/api/v3/applications/{username}/{appName}/pipelines')
+    List<Pipeline> getPipelinesForApplication(
+        @Header('Authorization') String authHeader,
+        @Path('username') username,
+        @Path('appName') appName
+    )
 
 }

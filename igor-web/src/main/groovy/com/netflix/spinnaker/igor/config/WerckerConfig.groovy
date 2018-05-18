@@ -34,7 +34,7 @@ public class WerckerConfig {
             WerckerProperties.WerckerHost host ->
             log.info "bootstrapping Wercker ${host.address} as ${host.name}"
             [(host.name): new WerckerService(
-                host.name, werckerClient(host))]
+                host.name, werckerClient(host), host.getUser(), host.getToken())]
         })
 
         buildMasters.map.putAll werckerMasters

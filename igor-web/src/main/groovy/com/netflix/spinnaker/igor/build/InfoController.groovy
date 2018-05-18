@@ -22,6 +22,7 @@ import com.netflix.spinnaker.igor.config.TravisProperties
 import com.netflix.spinnaker.igor.config.WerckerProperties
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
 import com.netflix.spinnaker.igor.service.BuildMasters
+import com.netflix.spinnaker.igor.wercker.WerckerService
 import groovy.transform.InheritConstructors
 import groovy.util.logging.Slf4j
 import org.springframework.beans.factory.annotation.Autowired
@@ -140,7 +141,14 @@ class InfoController {
 
             return jobList
         } else if (buildMasters.map.containsKey(master)) {
-            return buildCache.getJobNames(master)
+            WerckerService werckerService = buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
+
+            //If wercker, use getApplicationAndPipelineNames
+            if (werckerService) {
+                return werckerService.getApplicationAndPipelineNames()
+            } else {
+                return buildCache.getJobNames(master)
+            }
         } else {
             throw new MasterNotFoundException("Master '${master}' does not exist")
         }
