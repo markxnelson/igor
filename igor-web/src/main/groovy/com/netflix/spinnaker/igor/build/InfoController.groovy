@@ -22,7 +22,6 @@ import com.netflix.spinnaker.igor.config.TravisProperties
 import com.netflix.spinnaker.igor.config.WerckerProperties
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
 import com.netflix.spinnaker.igor.service.BuildMasters
-import com.netflix.spinnaker.igor.wercker.WerckerService
 import groovy.transform.InheritConstructors
 import groovy.util.logging.Slf4j
 import org.springframework.beans.factory.annotation.Autowired
@@ -31,7 +30,6 @@ import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.HandlerMapping
 
 import javax.servlet.http.HttpServletRequest
-
 /**
  * A controller that provides jenkins information
  */
@@ -141,9 +139,10 @@ class InfoController {
 
             return jobList
         } else if (buildMasters.map.containsKey(master)) {
-            WerckerService werckerService = buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
+            def werckerService = buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
 
             //If wercker, use getApplicationAndPipelineNames
+
             if (werckerService) {
                 return werckerService.getApplicationAndPipelineNames()
             } else {
