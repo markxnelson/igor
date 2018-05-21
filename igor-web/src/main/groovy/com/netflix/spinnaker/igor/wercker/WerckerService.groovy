@@ -22,7 +22,7 @@ class WerckerService implements BuildService {
         this.groupKey = werckerHostId
         this.werckerClient = werckerClient
         this.user = user
-        this.token = token
+        this.setToken(token)
     }
 
     /**
