@@ -45,65 +45,15 @@ public class WerckerCache {
         this.redisClientDelegate = redisClientDelegate;
         this.igorConfigurationProperties = igorConfigurationProperties;
     }
-
-//    public List<String> getJobNames(String master) {
-//        List<String> jobs = redisClientDelegate.withMultiClient(c -> {
-//            return c.keys(prefix() + ":" + master + ":*").stream()
-//                .map(JenkinsCache::extractJobName)
-//                .collect(Collectors.toList());
-//        });
-//        jobs.sort(Comparator.naturalOrder());
-//        return jobs;
-//    }
-//
-//    public List<String> getTypeaheadResults(String search) {
-//        List<String> results = redisClientDelegate.withMultiClient(c -> {
-//            return c.keys(prefix() + ":*:*" + search.toUpperCase() + "*:*").stream()
-//                .map(JenkinsCache::extractTypeaheadResult)
-//                .collect(Collectors.toList());
-//        });
-//        results.sort(Comparator.naturalOrder());
-//        return results;
-//    }
-
-//    public Map<String, Object> getLastBuild(String master, String job) {
-//        String key = makeKey(master, job);
-//        Map<String, String> result = redisClientDelegate.withCommandsClient(c -> {
-//            if (!c.exists(key)) {
-//                return null;
-//            }
-//            return c.hgetAll(key);
-//        });
-//
-//        if (result == null) {
-//            return new HashMap<>();
-//        }
-//
-//        Map<String, Object> converted = new HashMap<>();
-//        converted.put("lastBuildLabel", Integer.parseInt(result.get("lastBuildLabel")));
-//        converted.put("lastBuildBuilding", Boolean.valueOf(result.get("lastBuildBuilding")));
-//
-//        return converted;
-//    }
-//
-//    public void setLastBuild(String master, String job, int lastBuild, boolean building) {
-//        String key = makeKey(master, job);
-//        redisClientDelegate.withCommandsClient(c -> {
-//            c.hset(key, "lastBuildLabel", Integer.toString(lastBuild));
-//            c.hset(key, "lastBuildBuilding", Boolean.toString(building));
-//        });
-//    }
-
+    
     public void setLastPollCycleTimestamp(String master, String pipeline, Long timestamp) {
         String key = makeKey(master, pipeline);
-        System.out.println("~~~~ setLastPollCycleTimestamp " + key);
         redisClientDelegate.withCommandsClient(c -> {
             c.hset(key, POLL_STAMP, Long.toString(timestamp));
         });
     }
 
     public Long getLastPollCycleTimestamp(String master, String pipeline) {
-        System.out.println("~~~~ getLastPollCycleTimestamp " + makeKey(master, pipeline));
         return redisClientDelegate.withCommandsClient(c -> {
             String ts = c.hget(makeKey(master, pipeline), POLL_STAMP);
             return ts == null ? null : Long.parseLong(ts);
@@ -126,9 +76,7 @@ public class WerckerCache {
         	}
         	return c.hgetAll(key);
         });
-
-        System.out.println("~~~~~  " + ((existing == null || existing.size() == 0) ? "new" : "!!update!!" ) + " " + master + " " + pipeline);
-    	List<Run> newRuns = (existing == null || existing.size() == 0) ? runs 
+        List<Run> newRuns = (existing == null || existing.size() == 0) ? runs 
     			: runs.stream().filter(run -> !existing.containsKey(run.getId())).collect(Collectors.toList());
     	int startNumber = (existing == null || existing.size() == 0) ? 0 : existing.size();
     	newRuns.sort(runStartedAtComparator);
@@ -153,7 +101,6 @@ public class WerckerCache {
     }
 
     public Long getBuildNumber(String master, String pipeline, String runID) {
-        System.out.println("~~~~ getBuildNumbers " + makeKey(master, pipeline));
         return redisClientDelegate.withCommandsClient(c -> {
             String ts = c.hget(makeKey(master, pipeline)+ ":runs", runID);
             return ts == null ? null : Long.parseLong(ts);
@@ -188,15 +135,6 @@ public class WerckerCache {
     private String makeKey(String master, String job) {
         return prefix() + ":" + master + ":" + job.toUpperCase() + ":" + job;
     }
-
-//    private static String extractJobName(String key) {
-//        return key.split(":")[3];
-//    }
-//
-//    private static String extractTypeaheadResult(String key) {
-//        String[] parts = key.split(":");
-//        return parts[1] + ":" + parts[3];
-//    }
 
     private String prefix() {
         return igorConfigurationProperties.getSpinnaker().getJedis().getPrefix();
