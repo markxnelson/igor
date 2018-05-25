@@ -42,6 +42,7 @@ class WerckerProperties {
         String token
 
         List<String> organizations
-
+		
+        Integer itemUpperThreshold
     }
 }

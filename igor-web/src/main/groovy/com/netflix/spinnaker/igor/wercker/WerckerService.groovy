@@ -17,6 +17,7 @@ class WerckerService implements BuildService {
     String user
     String token
     String authHeaderValue
+	private static String SPLITOR = "~";
 
     public WerckerService(String werckerHostId, WerckerClient werckerClient, String user, String token) {
         this.groupKey = werckerHostId
@@ -69,7 +70,7 @@ class WerckerService implements BuildService {
         apps.each {app ->
             List<Pipeline> pipelines = werckerClient.getPipelinesForApplication(authHeaderValue, user, app.name)
             pipelines.each {pipeline ->
-                appAndPipelineNames.add(app.name + "::" + pipeline.name)
+                appAndPipelineNames.add(app.name + SPLITOR + pipeline.name)
             }
         }
         return appAndPipelineNames
@@ -85,7 +86,7 @@ class WerckerService implements BuildService {
     }
 
     List<Run> getBuilds(String appAndPipelineName) {
-        String[] split = appAndPipelineName.split("::")
+        String[] split = appAndPipelineName.split(SPLITOR)
         String appName = split[0]
         String pipelineName = split[1]
         List<Run> runs = []

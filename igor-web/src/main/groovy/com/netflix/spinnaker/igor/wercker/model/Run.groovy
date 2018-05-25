@@ -1,4 +1,7 @@
 package com.netflix.spinnaker.igor.wercker.model
+import java.time.Instant;
+import java.util.Date
+import com.fasterxml.jackson.annotation.JsonProperty
 
 /**
  * Represents a Wercker Run
@@ -8,6 +11,10 @@ class Run {
     String url
     String branch
     String commitHash
+	Date createdAt
+	Date finishedAt
+	Date startedAt
+	
     String message
     int progress
     String result
@@ -49,4 +56,14 @@ class Run {
             "type": "pipeline"
         }
      */
+
+	
+	
+//		public Instant getFinishedAt() {
+//			return finishedAt;
+//		}
+//	
+//		public void setFinishedAt(Instant finishedAt) {
+//			this.finishedAt = finishedAt;
+//		}
 }
