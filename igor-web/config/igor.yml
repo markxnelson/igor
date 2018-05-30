@@ -18,7 +18,7 @@ endpoints.health.sensitive: false
 spring.jackson.serialization.write_dates_as_timestamps: false
 
 jenkins:
-  enabled: true
+  enabled: false
   masters:
     -
       address: "http://localhost:8888/"
@@ -31,12 +31,12 @@ wercker:
   enabled: true
   masters:
     -
-      address: "https://dev.wercker.com/"
+      address: "https://app.wercker.com/"
       name: devwercker
-      user: desagar
+      user: shihchang
+      token: 2b85caeaf85c738849bdcb6bbb4c0af1c72092ed3f118e986fc9d003683895cf
       organizations:
         - "wercker"
-        - "st2-test"
 
 #artifact:
 #  This is a feature toggle for decoration of artifacts.

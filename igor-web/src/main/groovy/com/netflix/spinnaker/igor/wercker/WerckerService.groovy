@@ -58,7 +58,13 @@ class WerckerService implements BuildService {
         someBuild.building = true
         someBuild.fullDisplayName = "Wercker Job " + job + " [" + buildNumber + "]"
         someBuild.number = buildNumber
-        someBuild.url = address + "api/v3/runs/" + cache.getRunID(groupKey, job, buildNumber) 
+		//API
+//      someBuild.url = address + "api/v3/runs/" + cache.getRunID(groupKey, job, buildNumber) 
+		//UI the user should be org
+        String[] split = job.split(SPLITOR)
+        String app = split[0]
+        String pipeline = split[1]
+		someBuild.url = address + user + "/" + app + "/runs/" + pipeline + "/" + cache.getRunID(groupKey, job, buildNumber)
         return someBuild
     }
 
