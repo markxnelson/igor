@@ -17,12 +17,16 @@ class WerckerService implements BuildService {
     String user
     String token
     String authHeaderValue
+	String address
+    WerckerCache cache
 	private static String SPLITOR = "~";
 
-    public WerckerService(String werckerHostId, WerckerClient werckerClient, String user, String token) {
+    public WerckerService(String address, WerckerCache cache, String werckerHostId, WerckerClient werckerClient, String user, String token) {
         this.groupKey = werckerHostId
         this.werckerClient = werckerClient
         this.user = user
+		this.cache = cache
+        this.address = address
         this.setToken(token)
     }
 
@@ -54,7 +58,7 @@ class WerckerService implements BuildService {
         someBuild.building = true
         someBuild.fullDisplayName = "Wercker Job " + job + " [" + buildNumber + "]"
         someBuild.number = buildNumber
-        someBuild.url = "werckerUrlHere"
+        someBuild.url = address + "api/v3/runs/" + cache.getRunID(groupKey, job, buildNumber) 
         return someBuild
     }
 

@@ -26,6 +26,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 /**
@@ -68,7 +69,24 @@ public class WerckerCache {
 		}
     };
     
-    public List<String> updateBuildNumbers(String master, String pipeline, List<Run> runs) {
+    public String getRunID(String master, String pipeline, final int buildNumber) {
+        String key = makeKey(master, pipeline) + ":runs";
+        final Map<String, String> existing = redisClientDelegate.withCommandsClient(c -> {
+        	if (!c.exists(key)) {
+        		return null;
+        	}
+        	return c.hgetAll(key);
+        });
+        String build = Integer.toString(buildNumber);
+        for(Entry<String, String> entry : existing.entrySet()) {
+        	if (entry.getValue().equals(build)) {
+        		return entry.getKey();
+        	}
+        }
+        return null;
+    }
+    
+    public List<Run> updateBuildNumbers(String master, String pipeline, List<Run> runs) {
         String key = makeKey(master, pipeline) + ":runs";
         final Map<String, String> existing = redisClientDelegate.withCommandsClient(c -> {
         	if (!c.exists(key)) {
@@ -80,19 +98,12 @@ public class WerckerCache {
     			: runs.stream().filter(run -> !existing.containsKey(run.getId())).collect(Collectors.toList());
     	int startNumber = (existing == null || existing.size() == 0) ? 0 : existing.size();
     	newRuns.sort(runStartedAtComparator);
-        return setBuildNumbers(master, pipeline, startNumber, newRuns); 
+    	for(int i = 0; i < newRuns.size(); i++) {
+    		setBuildNumber(master, pipeline, newRuns.get(i).getId() , startNumber + i);
+    	}
+    	return newRuns;
     }
     
-    private List<String> setBuildNumbers(String master, String pipeline, int start, List<Run> runs) {
-        List<String> newRunsIDs = new ArrayList<>();
-    	for(int i = 0; i < runs.size(); i++) {
-            System.out.println("    setBuildNumber " + (start+i) + " " + runs.get(i).getId() + " " + runs.get(i).getStartedAt());
-    		setBuildNumber(master, pipeline, runs.get(i).getId() , start + i);
-    		newRunsIDs.add(runs.get(i).getId());
-    	}
-    	return newRunsIDs;
-    }
-
     public void setBuildNumber(String master, String pipeline, String runID, int number) {
         String key = makeKey(master, pipeline) + ":runs";
         redisClientDelegate.withCommandsClient(c -> {
@@ -107,13 +118,14 @@ public class WerckerCache {
         });
     }
 
-    public Boolean getEventPosted(String master, String job, Long cursor, String runID) {
-        String key = makeKey(master, job) + ":" + POLL_STAMP + ":" + cursor;
+    public Boolean getEventPosted(String master, String job, String runID) {
+//        String key = makeKey(master, job) + ":" + POLL_STAMP + ":" + cursor;
+        String key = makeKey(master, job) + ":" + POLL_STAMP + ":events";
         return redisClientDelegate.withCommandsClient(c -> c.hget(key, runID) != null);
     }
 
-    public void setEventPosted(String master, String job, Long cursor, String runID) {
-        String key = makeKey(master, job) + ":" + POLL_STAMP + ":" + cursor;
+    public void setEventPosted(String master, String job, String runID) {
+        String key = makeKey(master, job) + ":" + POLL_STAMP + ":events";
         redisClientDelegate.withCommandsClient(c -> {
             c.hset(key, runID, "POSTED");
         });

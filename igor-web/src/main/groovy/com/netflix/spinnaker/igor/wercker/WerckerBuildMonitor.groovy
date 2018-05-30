@@ -159,23 +159,25 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 	 * wercker.run = build
 	 */
     private void processRuns(WerckerService werckerService, String master, String pipeline, List<PipelineDelta> delta) {
-		List<Run> allBuilds = werckerService.getBuilds(pipeline)
+		List<Run> allRuns = werckerService.getBuilds(pipeline)
         log.info "Wercker Polling pipeline: ${pipeline}"
-        if (allBuilds.empty) {
-            log.debug("[{}:{}] has no builds skipping...", kv("master", master), kv("pipeline", pipeline))
+        if (allRuns.empty) {
+            log.debug("[{}:{}] has no runs skipping...", kv("master", master), kv("pipeline", pipeline))
             return
         }
-		Run lastStartedAt = getLastStartedAt(allBuilds)
+		Run lastStartedAt = getLastStartedAt(allRuns)
         try {
             Long cursor = cache.getLastPollCycleTimestamp(master, pipeline)
 			//The last build/run 
             Long lastBuildStamp = lastStartedAt.startedAt.fastTime //job.lastBuild.timestamp as Long
             Date upperBound     = lastStartedAt.startedAt //new Date(lastBuildStamp)
-			List<String> newRunIDs = cache.updateBuildNumbers(master, pipeline, allBuilds)
             if (cursor == lastBuildStamp) {
                 log.debug("[${master}:${pipeline}] is up to date. skipping")
                 return
             }
+			cache.updateBuildNumbers(master, pipeline, allRuns)
+			List<Run> allBuilds = allRuns.findAll { it.startedAt.fastTime > cursor  }
+            log.info "Wercker Polling pipeline: ${pipeline} recent runs ${allBuilds}"
 
             if (!cursor && !igorProperties.spinnaker.build.handleFirstBuilds) {
                 cache.setLastPollCycleTimestamp(master, pipeline, lastBuildStamp)
@@ -198,8 +200,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
                 upperBound: upperBound,
                 lowerBound: lowerBound,
                 completedBuilds: completedBuilds,
-                runningBuilds: currentlyBuilding,
-				newStartedRuns: newRunIDs
+                runningBuilds: currentlyBuilding
             ))
         } catch (e) {
             log.error("Error processing runs for [{}:{}]", kv("master", master), kv("pipeline", pipeline), e)
@@ -241,7 +242,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         delta.items.parallelStream().forEach { pipeline -> //job = pipeline
             // post events for finished builds
             pipeline.completedBuilds.forEach { run -> //build = run
-                Boolean eventPosted = cache.getEventPosted(master, pipeline.name, pipeline.cursor, run.id)	
+                Boolean eventPosted = cache.getEventPosted(master, pipeline.name, run.id)	
 				GenericBuild build = toBuild(master, pipeline.name, run)
 //				Build build = new Build ( 
 //					building: (run.finishedAt == null),
@@ -252,8 +253,8 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 //					url: run.url
 //				)
                 if (!eventPosted) {
-                    log.debug("[${master}:${pipeline.name}]:${build.id} event posted")
-                    cache.setEventPosted(master, pipeline.name, pipeline.cursor, run.id)
+                    log.info("[${master}:${pipeline.name}]:${build.id} event posted")
+                    cache.setEventPosted(master, pipeline.name, run.id)
                     if (sendEvents) {
                         postEvent(new GenericProject(pipeline.name, build), master)
                     }
@@ -296,6 +297,5 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         Date upperBound
         List<Run> completedBuilds
         List<Run> runningBuilds
-		List<Run> newStartedRuns
     }
 }
