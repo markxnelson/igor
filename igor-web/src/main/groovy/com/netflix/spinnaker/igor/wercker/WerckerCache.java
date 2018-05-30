@@ -21,9 +21,7 @@ import com.netflix.spinnaker.kork.jedis.RedisClientDelegate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -120,12 +118,12 @@ public class WerckerCache {
 
     public Boolean getEventPosted(String master, String job, String runID) {
 //        String key = makeKey(master, job) + ":" + POLL_STAMP + ":" + cursor;
-        String key = makeKey(master, job) + ":" + POLL_STAMP + ":events";
+        String key = makeEventsKey(master, job);
         return redisClientDelegate.withCommandsClient(c -> c.hget(key, runID) != null);
     }
 
     public void setEventPosted(String master, String job, String runID) {
-        String key = makeKey(master, job) + ":" + POLL_STAMP + ":events";
+        String key = makeEventsKey(master, job);
         redisClientDelegate.withCommandsClient(c -> {
             c.hset(key, runID, "POSTED");
         });
@@ -134,7 +132,8 @@ public class WerckerCache {
     public void pruneOldMarkers(String master, String job, Long cursor) {
         remove(master, job);
         redisClientDelegate.withCommandsClient(c -> {
-            c.del(makeKey(master, job) + ":" + POLL_STAMP + ":" + cursor);
+//          c.del(makeKey(master, job) + ":" + POLL_STAMP + ":" + cursor);
+            c.del(makeEventsKey(master, job));
         });
     }
 
@@ -142,6 +141,10 @@ public class WerckerCache {
         redisClientDelegate.withCommandsClient(c -> {
             c.del(makeKey(master, job));
         });
+    }
+    
+    private String makeEventsKey(String master, String job) {
+    	return makeKey(master, job) + ":" + POLL_STAMP + ":events";
     }
 
     private String makeKey(String master, String job) {

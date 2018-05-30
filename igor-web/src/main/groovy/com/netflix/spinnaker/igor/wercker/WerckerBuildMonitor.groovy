@@ -54,10 +54,12 @@ import retrofit.RetrofitError
 
 import javax.annotation.PreDestroy
 import java.text.SimpleDateFormat
+import java.util.Comparator
 import java.util.List
 import java.util.stream.Collectors
 
 import static net.logstash.logback.argument.StructuredArguments.kv
+
 /**
  * Monitors new wercker builds
  */
@@ -91,7 +93,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 
     @Override
     String getName() {
-        "werckerBuildMonitor"
+        "WerckerBuildMonitor"
     }
 
     @Override
@@ -139,19 +141,35 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         log.debug("Took ${System.currentTimeMillis() - startTime}ms to retrieve Wercker pipelines (master: {})", kv("master", master))
         return new PipelinePollingDelta(master: master, items: delta)
     }
-	
-	Run getLastStartedAt(List<Run> runs) {
-		Run last = runs.get(0);
-		for( Run run : runs ) {
-			if (run.startedAt != null) {
-				if (last.startedAt == null) {
-					last = run;
-				} else {
-			        last = (run.startedAt.fastTime >= last.startedAt.fastTime)? run : last;
-				}
+			
+	static Comparator<Run> finishedAtComparator = new Comparator<Run>() {
+		@Override
+		public int compare(Run r1, Run r2) {
+			if (r1.finishedAt != null && r2.finishedAt != null) {
+			    return r1.finishedAt.fastTime - r2.finishedAt.fastTime;
+			} else {
+			    return (r1.finishedAt == null) ? ((r2.finishedAt == null)? 0 : -1) : 1;
 			}
 		}
-		return last;
+	};
+	
+	Run getLastFinishedAt(List<Run> runs) {
+		return Collections.max(runs, finishedAtComparator);
+	}
+	
+	static Comparator<Run> startedAtComparator = new Comparator<Run>() {
+		@Override
+		public int compare(Run r1, Run r2) {
+			if (r1.startedAt != null && r2.startedAt != null) {
+				return r1.startedAt.fastTime - r2.startedAt.fastTime;
+			} else {
+				return (r1.startedAt == null) ? ((r2.startedAt == null)? 0 : -1) : 1;
+			}
+		}
+	};
+	
+	Run getLastStartedAt(List<Run> runs) {
+		return Collections.max(runs, startedAtComparator);
 	}
 	
 	/**
@@ -160,12 +178,12 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 	 */
     private void processRuns(WerckerService werckerService, String master, String pipeline, List<PipelineDelta> delta) {
 		List<Run> allRuns = werckerService.getBuilds(pipeline)
-        log.info "Wercker Polling pipeline: ${pipeline}"
+        log.info "Wercker polling pipeline: ${pipeline}"
         if (allRuns.empty) {
             log.debug("[{}:{}] has no runs skipping...", kv("master", master), kv("pipeline", pipeline))
             return
         }
-		Run lastStartedAt = getLastStartedAt(allRuns)
+		Run lastStartedAt = getLastStartedAt(allRuns);
         try {
             Long cursor = cache.getLastPollCycleTimestamp(master, pipeline)
 			//The last build/run 
@@ -176,23 +194,19 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
                 return
             }
 			cache.updateBuildNumbers(master, pipeline, allRuns)
-			List<Run> allBuilds = allRuns.findAll { it.startedAt.fastTime > cursor  }
-            log.info "Wercker Polling pipeline: ${pipeline} recent runs ${allBuilds}"
-
+			List<Run> allBuilds = allRuns.findAll { it.startedAt.fastTime > cursor }
             if (!cursor && !igorProperties.spinnaker.build.handleFirstBuilds) {
                 cache.setLastPollCycleTimestamp(master, pipeline, lastBuildStamp)
                 return
             }
             List<Run> currentlyBuilding = allBuilds.findAll { it.finishedAt == null }
-            List<Run> completedBuilds = allBuilds.findAll { it.finishedAt != null }
-			
-            cursor = !cursor ? lastBuildStamp : cursor
+			//For initial run (cursor == null), use only the latest finished one
+            List<Run> completedBuilds = cursor ? allBuilds.findAll { it.finishedAt != null } : [ getLastFinishedAt(allBuilds) ]
+            cursor = cursor?:lastBuildStamp
             Date lowerBound = new Date(cursor)
-
             if (!igorProperties.spinnaker.build.processBuildsOlderThanLookBackWindow) {
                 completedBuilds = onlyInLookBackWindow(completedBuilds)
             }
-			//Should we use the newRunIDs to calculate the Delta
             delta.add(new PipelineDelta(
                 cursor: cursor,
                 name: pipeline,
@@ -244,14 +258,6 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
             pipeline.completedBuilds.forEach { run -> //build = run
                 Boolean eventPosted = cache.getEventPosted(master, pipeline.name, run.id)	
 				GenericBuild build = toBuild(master, pipeline.name, run)
-//				Build build = new Build ( 
-//					building: (run.finishedAt == null),
-//					result: run.result,
-//					number: cache.getBuildNumber(master, pipeline.name, run.id),
-//					timestamp: run.startedAt.fastTime as String,
-//					id: run.id,
-//					url: run.url
-//				)
                 if (!eventPosted) {
                     log.info("[${master}:${pipeline.name}]:${build.id} event posted")
                     cache.setEventPosted(master, pipeline.name, run.id)
