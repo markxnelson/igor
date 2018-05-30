@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -44,7 +45,7 @@ public class WerckerCache {
         this.redisClientDelegate = redisClientDelegate;
         this.igorConfigurationProperties = igorConfigurationProperties;
     }
-    
+
     public void setLastPollCycleTimestamp(String master, String pipeline, Long timestamp) {
         String key = makeKey(master, pipeline);
         redisClientDelegate.withCommandsClient(c -> {
@@ -58,7 +59,7 @@ public class WerckerCache {
             return ts == null ? null : Long.parseLong(ts);
         });
     }
-    
+
     static Comparator<Run> runStartedAtComparator = new Comparator<Run>() {
 		@Override
 		public int compare(Run r1, Run r2) {
@@ -66,7 +67,7 @@ public class WerckerCache {
 			return l > 0 ? 1 : (l == 0 ? 0 : -1);
 		}
     };
-    
+
     public String getRunID(String master, String pipeline, final int buildNumber) {
         String key = makeKey(master, pipeline) + ":runs";
         final Map<String, String> existing = redisClientDelegate.withCommandsClient(c -> {
@@ -83,25 +84,37 @@ public class WerckerCache {
         }
         return null;
     }
-    
-    public List<Run> updateBuildNumbers(String master, String pipeline, List<Run> runs) {
-        String key = makeKey(master, pipeline) + ":runs";
+
+    /**
+     * Creates entries in Redis for each run in the runs list (except if the run id already exists)
+     * and generates build numbers for each run id (ordered by startedAt date)
+     * @param master
+     * @param appAndPipelineName
+     * @param runs
+     * @return a map containing the generated build numbers for each run created, keyed by run id
+     */
+    public Map<String, Integer> updateBuildNumbers(String master, String appAndPipelineName,
+                                                   List<Run> runs) {
+        String key = makeKey(master, appAndPipelineName) + ":runs";
         final Map<String, String> existing = redisClientDelegate.withCommandsClient(c -> {
         	if (!c.exists(key)) {
         		return null;
         	}
         	return c.hgetAll(key);
         });
-        List<Run> newRuns = (existing == null || existing.size() == 0) ? runs 
+        List<Run> newRuns = (existing == null || existing.size() == 0) ? runs
     			: runs.stream().filter(run -> !existing.containsKey(run.getId())).collect(Collectors.toList());
+        Map<String, Integer> runIdToBuildNumber = new HashMap<>();
     	int startNumber = (existing == null || existing.size() == 0) ? 0 : existing.size();
     	newRuns.sort(runStartedAtComparator);
     	for(int i = 0; i < newRuns.size(); i++) {
-    		setBuildNumber(master, pipeline, newRuns.get(i).getId() , startNumber + i);
+    	    int buildNum = startNumber + i;
+    		setBuildNumber(master, appAndPipelineName, newRuns.get(i).getId() , buildNum);
+    		runIdToBuildNumber.put(newRuns.get(i).getId(), buildNum);
     	}
-    	return newRuns;
+    	return runIdToBuildNumber;
     }
-    
+
     public void setBuildNumber(String master, String pipeline, String runID, int number) {
         String key = makeKey(master, pipeline) + ":runs";
         redisClientDelegate.withCommandsClient(c -> {
@@ -142,7 +155,7 @@ public class WerckerCache {
             c.del(makeKey(master, job));
         });
     }
-    
+
     private String makeEventsKey(String master, String job) {
     	return makeKey(master, job) + ":" + POLL_STAMP + ":events";
     }

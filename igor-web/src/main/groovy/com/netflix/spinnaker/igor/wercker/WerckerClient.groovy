@@ -19,11 +19,9 @@ package com.netflix.spinnaker.igor.wercker
 import com.netflix.spinnaker.igor.wercker.model.Application
 import com.netflix.spinnaker.igor.wercker.model.Pipeline
 import com.netflix.spinnaker.igor.wercker.model.Run
+import com.netflix.spinnaker.igor.wercker.model.RunPayload
 import com.netflix.spinnaker.igor.wercker.model.Workflow
-import retrofit.http.GET
-import retrofit.http.Header
-import retrofit.http.Path
-import retrofit.http.Query
+import retrofit.http.*
 
 /**
  * Interface for interacting with a Wercker service using retrofit
@@ -64,5 +62,15 @@ interface WerckerClient {
         @Path('username') username,
         @Path('appName') appName
     )
+
+    @POST('/api/v3/runs')
+    Map<String, Object> triggerBuild(
+        @Header('Authorization') String authHeader,
+        @Body RunPayload runPayload
+    )
+
+    @GET('/api/v3/runs/{runId}')
+    public Run getRunById(@Header('Authorization') String authHeader,
+                             @Path('runId') String runId)
 
 }

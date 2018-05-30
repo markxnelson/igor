@@ -17,26 +17,7 @@ endpoints.health.sensitive: false
 
 spring.jackson.serialization.write_dates_as_timestamps: false
 
-jenkins:
-  enabled: false
-  masters:
-    -
-      address: "http://localhost:8888/"
-      name: localjenk
-      password: 0d7939cc86da4c83bb27c271243460e4
-      username: admin
-#      token: ea15d69e18e05f077779a5258fb1a1ea
 
-wercker:
-  enabled: true
-  masters:
-    -
-      address: "https://app.wercker.com/"
-      name: devwercker
-      user: shihchang
-      token: 2b85caeaf85c738849bdcb6bbb4c0af1c72092ed3f118e986fc9d003683895cf
-      organizations:
-        - "wercker"
 
 #artifact:
 #  This is a feature toggle for decoration of artifacts.

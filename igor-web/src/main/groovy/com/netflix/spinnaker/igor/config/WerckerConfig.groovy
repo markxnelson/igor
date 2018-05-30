@@ -35,7 +35,7 @@ public class WerckerConfig {
             WerckerProperties.WerckerHost host ->
             log.info "bootstrapping Wercker ${host.address} as ${host.name}"
             [(host.name): new WerckerService( host.address, cache,
-                host.name, werckerClient(host), host.getUser(), host.getToken())]
+                host.name, werckerClient(host), host.getUser(), host.getToken(), host.name)]
         })
 
         buildMasters.map.putAll werckerMasters
@@ -49,7 +49,6 @@ public class WerckerConfig {
             .setEndpoint(Endpoints.newFixedEndpoint(host.address))
 //            .setRequestInterceptor(requestInterceptor)
             .setClient(new OkClient(client))
-//            .setConverter(new SimpleXMLConverter()) //TODO desagar do we need a json converter?
             .build()
             .create(WerckerClient)
     }
