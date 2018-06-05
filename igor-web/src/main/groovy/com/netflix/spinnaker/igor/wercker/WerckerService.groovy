@@ -3,6 +3,7 @@ package com.netflix.spinnaker.igor.wercker
 import com.netflix.spinnaker.igor.build.BuildController
 import com.netflix.spinnaker.igor.build.model.GenericBuild
 import com.netflix.spinnaker.igor.build.model.GenericGitRevision
+import com.netflix.spinnaker.igor.build.model.Result
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
 import com.netflix.spinnaker.igor.service.BuildService
 import com.netflix.spinnaker.igor.wercker.model.Application
@@ -56,19 +57,44 @@ class WerckerService implements BuildService {
 
     @Override
     GenericBuild getGenericBuild(final String job, final int buildNumber) {
-        GenericBuild someBuild = new GenericBuild()
-        someBuild.name = job
-        someBuild.building = true
-        someBuild.fullDisplayName = "Wercker Job " + job + " [" + buildNumber + "]"
-        someBuild.number = buildNumber
-        //API
-//      someBuild.url = address + "api/v3/runs/" + cache.getRunID(groupKey, job, buildNumber)
+        GenericBuild genericBuild = new GenericBuild()
+        genericBuild.name = job
+        genericBuild.number = buildNumber
         //UI the user should be org
         String[] split = job.split(SPLITOR)
         String app = split[0]
         String pipeline = split[1]
-        someBuild.url = (address.endsWith('/') ? address : address + "/") + user + "/" + app + "/runs/" + pipeline + "/" + cache.getRunID(groupKey, job, buildNumber)
-        return someBuild
+        String runId = cache.getRunID(groupKey, job, buildNumber)
+        if (runId == null) {
+            throw new BuildController.BuildJobError(
+                "Could not find build number ${buildNumber} for job ${job} - no matching run ID!")
+        }
+
+        Run run = werckerClient.getRunById(authHeaderValue, runId)
+
+        genericBuild.building = (run.finishedAt == null)
+        genericBuild.fullDisplayName = "Wercker Job " + job + " [" + runId + "]"
+        String addr = address.endsWith("/") ? address.substring(0, address.length()-1) : address
+        genericBuild.url = String.join("/", addr, user, app, "runs", pipeline, runId)
+        genericBuild.result = mapRunToResult(run)
+        return genericBuild
+    }
+
+    Result mapRunToResult(final Run run) {
+        if (run.finishedAt == null) return Result.BUILDING
+        if ("notstarted".equals(run.status)) return Result.NOT_BUILT
+        switch (run.result) {
+            case "passed":
+                return Result.SUCCESS
+                break
+            case "aborted":
+                return Result.ABORTED
+                break
+            case "failed":
+                return Result.FAILURE
+                break
+        }
+        return Result.UNSTABLE
     }
 
     @Override
