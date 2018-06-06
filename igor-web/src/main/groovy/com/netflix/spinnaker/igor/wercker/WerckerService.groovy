@@ -10,9 +10,13 @@ import com.netflix.spinnaker.igor.wercker.model.Application
 import com.netflix.spinnaker.igor.wercker.model.Pipeline
 import com.netflix.spinnaker.igor.wercker.model.Run
 import com.netflix.spinnaker.igor.wercker.model.RunPayload
+import groovy.util.logging.Slf4j
+import retrofit.client.Response
 
 import static com.netflix.spinnaker.igor.model.BuildServiceProvider.WERCKER
+import static net.logstash.logback.argument.StructuredArguments.kv
 
+@Slf4j
 class WerckerService implements BuildService {
 
     String groupKey;
@@ -97,6 +101,20 @@ class WerckerService implements BuildService {
         return Result.UNSTABLE
     }
 
+    Response stopRunningBuild (String appAndPipelineName, Integer buildNumber){
+        String[] split = appAndPipelineName.split(SPLITOR)
+        String appName = split[0]
+        String pipelineName = split[1]
+        String runId = cache.getRunID(groupKey, appAndPipelineName, buildNumber)
+        if (runId == null) {
+            log.warn("Could not cancel build number {} for job {} - no matching run ID!",
+                kv("buildNumber", buildNumber), kv("job", appAndPipelineName))
+            return
+        }
+        log.info("Aborting Wercker run id {}", kv("runId", runId))
+        return werckerClient.abortRun(authHeaderValue, runId, [:])
+    }
+
     @Override
     int triggerBuildWithParameters(final String appAndPipelineName, final Map<String, String> queryParameters) {
         String[] split = appAndPipelineName.split("~")
@@ -106,7 +124,8 @@ class WerckerService implements BuildService {
             authHeaderValue, user, appName)
         Pipeline pipeline = pipelines.find {p -> pipelineName.equals(p.pipelineName)}
         if (pipeline) {
-            println "Triggering run for pipeline ${pipelineName} id: ${pipeline.id} "
+            log.info("Triggering run for pipeline {} with id {}",
+                kv("pipelineName", pipelineName), kv("pipelineId", pipeline.id))
             Map<String, Object> runInfo = werckerClient.triggerBuild(
                 authHeaderValue, new RunPayload(pipeline.id, 'Triggered from Spinnaker'))
             //TODO desagar the triggerBuild call above itself returns a Run, but the createdAt date
@@ -120,7 +139,10 @@ class WerckerService implements BuildService {
             Map<String, Integer> runIdBuildNumbers = cache.updateBuildNumbers(
                 master, appAndPipelineName, Collections.singletonList(run))
 
-            println "Triggered run ${run.id} at URL ${run.url} with build number ${runIdBuildNumbers.get(run.id)}"
+            log.info("Triggered run {} at URL {} with build number {}",
+                kv("runId", run.id), kv("url", run.url),
+                kv("buildNumber", runIdBuildNumbers.get(run.id)))
+
             //return the integer build number for this run id
             return runIdBuildNumbers.get(run.id)
         } else {

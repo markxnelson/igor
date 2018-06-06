@@ -21,6 +21,7 @@ import com.netflix.spinnaker.igor.wercker.model.Pipeline
 import com.netflix.spinnaker.igor.wercker.model.Run
 import com.netflix.spinnaker.igor.wercker.model.RunPayload
 import com.netflix.spinnaker.igor.wercker.model.Workflow
+import retrofit.client.Response
 import retrofit.http.*
 
 /**
@@ -70,7 +71,11 @@ interface WerckerClient {
     )
 
     @GET('/api/v3/runs/{runId}')
-    public Run getRunById(@Header('Authorization') String authHeader,
+    Run getRunById(@Header('Authorization') String authHeader,
                              @Path('runId') String runId)
 
+    @PUT('/api/v3/runs/{runId}/abort')
+    Response abortRun(@Header('Authorization') String authHeader,
+                      @Path('runId') String runId,
+                      @Body Map body)
 }
