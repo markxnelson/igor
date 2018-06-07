@@ -11,7 +11,9 @@ import com.netflix.spinnaker.igor.wercker.model.Pipeline
 import com.netflix.spinnaker.igor.wercker.model.Run
 import com.netflix.spinnaker.igor.wercker.model.RunPayload
 import groovy.util.logging.Slf4j
+import retrofit.RetrofitError
 import retrofit.client.Response
+import retrofit.mime.TypedByteArray
 
 import static com.netflix.spinnaker.igor.model.BuildServiceProvider.WERCKER
 import static net.logstash.logback.argument.StructuredArguments.kv
@@ -126,25 +128,39 @@ class WerckerService implements BuildService {
         if (pipeline) {
             log.info("Triggering run for pipeline {} with id {}",
                 kv("pipelineName", pipelineName), kv("pipelineId", pipeline.id))
-            Map<String, Object> runInfo = werckerClient.triggerBuild(
-                authHeaderValue, new RunPayload(pipeline.id, 'Triggered from Spinnaker'))
-            //TODO desagar the triggerBuild call above itself returns a Run, but the createdAt date
-            //is not in ISO8601 format, and parsing fails. The following is a temporary
-            //workaround - the getRunById call below gets the same Run object but Wercker
-            //returns the date in the ISO8601 format for this case.
-            Run run = werckerClient.getRunById(authHeaderValue, runInfo.get('id'))
+            try {
+                Map<String, Object> runInfo = werckerClient.triggerBuild(
+                    authHeaderValue, new RunPayload(pipeline.id, 'Triggered from Spinnaker'))
+                //TODO desagar the triggerBuild call above itself returns a Run, but the createdAt date
+                //is not in ISO8601 format, and parsing fails. The following is a temporary
+                //workaround - the getRunById call below gets the same Run object but Wercker
+                //returns the date in the ISO8601 format for this case.
+                Run run = werckerClient.getRunById(authHeaderValue, runInfo.get('id'))
 
-            //Create an entry in the WerckerCache for this new run. This will also generate
-            //an integer build number for the run
-            Map<String, Integer> runIdBuildNumbers = cache.updateBuildNumbers(
-                master, appAndPipelineName, Collections.singletonList(run))
+                //Create an entry in the WerckerCache for this new run. This will also generate
+                //an integer build number for the run
+                Map<String, Integer> runIdBuildNumbers = cache.updateBuildNumbers(
+                    master, appAndPipelineName, Collections.singletonList(run))
 
-            log.info("Triggered run {} at URL {} with build number {}",
-                kv("runId", run.id), kv("url", run.url),
-                kv("buildNumber", runIdBuildNumbers.get(run.id)))
+                log.info("Triggered run {} at URL {} with build number {}",
+                    kv("runId", run.id), kv("url", run.url),
+                    kv("buildNumber", runIdBuildNumbers.get(run.id)))
 
-            //return the integer build number for this run id
-            return runIdBuildNumbers.get(run.id)
+                //return the integer build number for this run id
+                return runIdBuildNumbers.get(run.id)
+            } catch (RetrofitError e) {
+                def body = e.getResponse().getBody()
+                String wkrMsg
+                if (body instanceof TypedByteArray) {
+                    wkrMsg = new String(((retrofit.mime.TypedByteArray) body).getBytes())
+                } else {
+                    wkrMsg = body.in().text
+                }
+                log.error("Failed to trigger build for pipeline {}. {}", kv("pipelineName", pipelineName), kv("errMsg", wkrMsg))
+                throw new BuildController.BuildJobError(
+                    "Failed to trigger build for pipeline ${pipelineName}! Error from Wercker is: ${wkrMsg}")
+            }
+
         } else {
             throw new BuildController.InvalidJobParameterException(
                 "Could not retrieve pipeline ${pipelineName} for application ${appName} from Wercker!")
