@@ -19,33 +19,29 @@ package com.netflix.spinnaker.igor.wercker
 import com.netflix.discovery.DiscoveryClient
 import com.netflix.spectator.api.Registry
 import com.netflix.spinnaker.igor.IgorConfigurationProperties
+import com.netflix.spinnaker.igor.build.model.GenericBuild
+import com.netflix.spinnaker.igor.build.model.GenericProject
+import com.netflix.spinnaker.igor.build.model.Result
 import com.netflix.spinnaker.igor.config.WerckerProperties
 import com.netflix.spinnaker.igor.history.EchoService
+import com.netflix.spinnaker.igor.history.model.GenericBuildContent
 
 //TODO
 //import com.netflix.spinnaker.igor.history.model.BuildContent
 //import com.netflix.spinnaker.igor.history.model.BuildEvent
-import com.netflix.spinnaker.igor.history.model.GenericBuildContent
 import com.netflix.spinnaker.igor.history.model.GenericBuildEvent
-import com.netflix.spinnaker.igor.build.model.GenericBuild
-import com.netflix.spinnaker.igor.build.model.GenericProject
-import com.netflix.spinnaker.igor.build.model.Result
+import com.netflix.spinnaker.igor.model.BuildServiceProvider
+
 //import com.netflix.spinnaker.igor.jenkins.client.model.Build
 //import com.netflix.spinnaker.igor.jenkins.client.model.BuildArtifact
 //import com.netflix.spinnaker.igor.jenkins.client.model.Project
-
-import com.netflix.spinnaker.igor.model.BuildServiceProvider
 import com.netflix.spinnaker.igor.polling.CommonPollingMonitor
 import com.netflix.spinnaker.igor.polling.DeltaItem
 import com.netflix.spinnaker.igor.polling.PollContext
 import com.netflix.spinnaker.igor.polling.PollingDelta
 import com.netflix.spinnaker.igor.service.BuildMasters
 import com.netflix.spinnaker.igor.wercker.model.Run
-
 import groovy.time.TimeCategory
-
-import org.simpleframework.xml.Element
-import org.simpleframework.xml.ElementList
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -53,13 +49,9 @@ import org.springframework.stereotype.Service
 import retrofit.RetrofitError
 
 import javax.annotation.PreDestroy
-import java.text.SimpleDateFormat
-import java.util.Comparator
-import java.util.List
 import java.util.stream.Collectors
 
 import static net.logstash.logback.argument.StructuredArguments.kv
-
 /**
  * Monitors new wercker builds
  */
@@ -141,7 +133,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         log.debug("Took ${System.currentTimeMillis() - startTime}ms to retrieve Wercker pipelines (master: {})", kv("master", master))
         return new PipelinePollingDelta(master: master, items: delta)
     }
-			
+
 	static Comparator<Run> finishedAtComparator = new Comparator<Run>() {
 		@Override
 		public int compare(Run r1, Run r2) {
@@ -152,11 +144,11 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 			}
 		}
 	};
-	
+
 	Run getLastFinishedAt(List<Run> runs) {
 		return Collections.max(runs, finishedAtComparator);
 	}
-	
+
 	static Comparator<Run> startedAtComparator = new Comparator<Run>() {
 		@Override
 		public int compare(Run r1, Run r2) {
@@ -167,13 +159,13 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 			}
 		}
 	};
-	
+
 	Run getLastStartedAt(List<Run> runs) {
 		return Collections.max(runs, startedAtComparator);
 	}
-	
+
 	/**
-	 * wercker.pipeline = project|job 
+	 * wercker.pipeline = project|job
 	 * wercker.run = build
 	 */
     private void processRuns(WerckerService werckerService, String master, String pipeline, List<PipelineDelta> delta) {
@@ -186,7 +178,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 		Run lastStartedAt = getLastStartedAt(allRuns);
         try {
             Long cursor = cache.getLastPollCycleTimestamp(master, pipeline)
-			//The last build/run 
+			//The last build/run
             Long lastBuildStamp = lastStartedAt.startedAt.fastTime //job.lastBuild.timestamp as Long
             Date upperBound     = lastStartedAt.startedAt //new Date(lastBuildStamp)
             if (cursor == lastBuildStamp) {
@@ -194,7 +186,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
                 return
             }
 			cache.updateBuildNumbers(master, pipeline, allRuns)
-			List<Run> allBuilds = allRuns.findAll { it.startedAt.fastTime > cursor }
+			List<Run> allBuilds = allRuns.findAll { it?.startedAt?.fastTime > cursor }
             if (!cursor && !igorProperties.spinnaker.build.handleFirstBuilds) {
                 cache.setLastPollCycleTimestamp(master, pipeline, lastBuildStamp)
                 return
@@ -224,7 +216,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
             }
         }
     }
-	
+
     private List<Run> onlyInLookBackWindow(List<Run> builds) {
         use(TimeCategory) {
             def offsetSeconds = pollInterval.seconds
@@ -237,10 +229,10 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
             }).collect(Collectors.toList())
         }
     }
-	
+
 	private GenericBuild toBuild(String master, String pipeline, Run run) {
 		Result res = (run.finishedAt == null) ? Result.BUILDING : (run.result.equals("passed")? Result.SUCCESS : Result.FAILURE)
-		return new GenericBuild ( 
+		return new GenericBuild (
 					building: (run.finishedAt == null),
 					result: res,
 					number: cache.getBuildNumber(master, pipeline, run.id),
@@ -249,14 +241,14 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 					url: run.url
 				);
 	}
-	
+
     @Override
     protected void commitDelta(PipelinePollingDelta delta, boolean sendEvents) {
         String master = delta.master
         delta.items.parallelStream().forEach { pipeline -> //job = pipeline
             // post events for finished builds
             pipeline.completedBuilds.forEach { run -> //build = run
-                Boolean eventPosted = cache.getEventPosted(master, pipeline.name, run.id)	
+                Boolean eventPosted = cache.getEventPosted(master, pipeline.name, run.id)
 				GenericBuild build = toBuild(master, pipeline.name, run)
                 if (!eventPosted) {
                     log.info("[${master}:${pipeline.name}]:${build.id} event posted")
