@@ -139,11 +139,18 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 		front50.get().getAllPipelineConfigs().forEach({ pipeline ->
 			pipeline['triggers'].forEach({ trigger ->
 				if (trigger['enabled'] && trigger['type'] == 'wercker' && trigger['master'] == master) {
+//log.info "~~ !! configured Trigger for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${trigger}"
 					jobs.add(trigger['job']);
+				}
+			})		
+			pipeline['stages'].forEach({ stage ->
+				if (stage['type'] == 'wercker' && stage['master'] == master) {
+//log.info "~~ !! configured Stage for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${stage}"
+					jobs.add(stage['job']);
 				}
 			})
 		})
-		log.info "~~ getConfiguredJobs for ${master}: ${jobs}"
+//		log.info "~~ getConfiguredJobs for ${master}: ${jobs}"
 		return jobs;
 	}
 	

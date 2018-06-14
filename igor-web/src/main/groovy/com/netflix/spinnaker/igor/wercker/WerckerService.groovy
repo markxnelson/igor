@@ -71,9 +71,6 @@ class WerckerService implements BuildService {
 
     @Override
     GenericBuild getGenericBuild(final String job, final int buildNumber) {
-        GenericBuild genericBuild = new GenericBuild()
-        genericBuild.name = job
-        genericBuild.number = buildNumber
         //UI the user should be org
         //Note - GitlabCI throws UnsupportedOperationException for this - why is that?
         GenericBuild someBuild = new GenericBuild()
