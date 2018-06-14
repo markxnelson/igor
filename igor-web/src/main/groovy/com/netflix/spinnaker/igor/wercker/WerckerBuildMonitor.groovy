@@ -25,16 +25,11 @@ import com.netflix.spinnaker.igor.build.model.Result
 import com.netflix.spinnaker.igor.config.WerckerProperties
 import com.netflix.spinnaker.igor.history.EchoService
 import com.netflix.spinnaker.igor.history.model.GenericBuildContent
+import com.netflix.spinnaker.igor.service.Front50Service
 
-//TODO
-//import com.netflix.spinnaker.igor.history.model.BuildContent
-//import com.netflix.spinnaker.igor.history.model.BuildEvent
 import com.netflix.spinnaker.igor.history.model.GenericBuildEvent
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
 
-//import com.netflix.spinnaker.igor.jenkins.client.model.Build
-//import com.netflix.spinnaker.igor.jenkins.client.model.BuildArtifact
-//import com.netflix.spinnaker.igor.jenkins.client.model.Project
 import com.netflix.spinnaker.igor.polling.CommonPollingMonitor
 import com.netflix.spinnaker.igor.polling.DeltaItem
 import com.netflix.spinnaker.igor.polling.PollContext
@@ -52,6 +47,7 @@ import javax.annotation.PreDestroy
 import java.util.stream.Collectors
 
 import static net.logstash.logback.argument.StructuredArguments.kv
+
 /**
  * Monitors new wercker builds
  */
@@ -64,6 +60,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
     private final BuildMasters buildMasters
     private final boolean pollingEnabled
     private final Optional<EchoService> echoService
+    private final Optional<Front50Service> front50
     private final WerckerProperties werckerProperties
 
     @Autowired
@@ -74,12 +71,14 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
                         BuildMasters buildMasters,
                         @Value('${wercker.polling.enabled:true}') boolean pollingEnabled,
                         Optional<EchoService> echoService,
+						Optional<Front50Service> front50Service,
                         WerckerProperties werckerProperties) {
         super(properties, registry, discoveryClient)
         this.cache = cache
         this.buildMasters = buildMasters
         this.pollingEnabled = pollingEnabled
         this.echoService = echoService
+		this.front50 = front50Service
         this.werckerProperties = werckerProperties
     }
 
@@ -128,12 +127,26 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         List<PipelineDelta> delta = []
 
         WerckerService werckerService = buildMasters.map[master] as WerckerService
-		List<String> pipelines = werckerService.getApplicationAndPipelineNames()
+		List<String> pipelines = front50.isPresent() ? getConfiguredJobs(master) : 
+		    werckerService.getApplicationAndPipelineNames()
 		pipelines.forEach( { pipeline -> processRuns(werckerService, master, pipeline, delta)})
         log.debug("Took ${System.currentTimeMillis() - startTime}ms to retrieve Wercker pipelines (master: {})", kv("master", master))
         return new PipelinePollingDelta(master: master, items: delta)
     }
-
+	
+	List<String> getConfiguredJobs(String master) {
+		List<String> jobs = []
+		front50.get().getAllPipelineConfigs().forEach({ pipeline ->
+			pipeline['triggers'].forEach({ trigger ->
+				if (trigger['enabled'] && trigger['type'] == 'wercker' && trigger['master'] == master) {
+					jobs.add(trigger['job']);
+				}
+			})
+		})
+		log.info "~~ getConfiguredJobs for ${master}: ${jobs}"
+		return jobs;
+	}
+	
 	static Comparator<Run> finishedAtComparator = new Comparator<Run>() {
 		@Override
 		public int compare(Run r1, Run r2) {

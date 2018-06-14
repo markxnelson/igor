@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 public class WerckerCache {
 
     private static final String POLL_STAMP = "lastPollCycleTimestamp";
+    private static final String PIPELINE_ID = "pipelineId";
 
     private final RedisClientDelegate redisClientDelegate;
     private final IgorConfigurationProperties igorConfigurationProperties;
@@ -63,10 +64,28 @@ public class WerckerCache {
     static Comparator<Run> runStartedAtComparator = new Comparator<Run>() {
 		@Override
 		public int compare(Run r1, Run r2) {
+			if (r1.getStartedAt() == null) {
+				return r2.getStartedAt() == null ? 0 : -1;
+			} else if (r2.getStartedAt() == null) {
+				return 1;
+			}
 			long l = (r1.getStartedAt().toInstant().toEpochMilli() - r2.getStartedAt().toInstant().toEpochMilli());
 			return l > 0 ? 1 : (l == 0 ? 0 : -1);
 		}
     };
+
+    public String getPipelineID(String master, String pipeline) {
+        return redisClientDelegate.withCommandsClient(c -> {
+            return c.hget(makeKey(master, pipeline), PIPELINE_ID);
+        });
+    }
+
+    public void setPipelineID(String master, String pipeline, String id) {
+        String key = makeKey(master, pipeline);
+        redisClientDelegate.withCommandsClient(c -> {
+            c.hset(key, PIPELINE_ID, id);
+        });
+    }
 
     public String getRunID(String master, String pipeline, final int buildNumber) {
         String key = makeKey(master, pipeline) + ":runs";

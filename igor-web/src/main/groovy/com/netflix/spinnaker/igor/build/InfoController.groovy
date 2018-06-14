@@ -29,6 +29,8 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.HandlerMapping
 
+import java.util.List
+
 import javax.servlet.http.HttpServletRequest
 /**
  * A controller that provides jenkins information
@@ -139,12 +141,16 @@ class InfoController {
 
             return jobList
         } else if (buildMasters.map.containsKey(master)) {
-            def werckerService = buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
+			def werckerService  = 
+			   buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
+//            com.netflix.spinnaker.igor.wercker.WerckerService werckerService = 
+//			   buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
 
             //If wercker, use getApplicationAndPipelineNames
 
             if (werckerService) {
-                return werckerService.getApplicationAndPipelineNames()
+				com.netflix.spinnaker.igor.wercker.WerckerService wercker = werckerService
+                return wercker.getApplicationAndPipelineNames()
             } else {
                 return buildCache.getJobNames(master)
             }
@@ -163,6 +169,26 @@ class InfoController {
         }
         return service.getJobConfig(job)
     }
+	
+    @RequestMapping(value = '/applications/{master:.+}', method = RequestMethod.GET)
+    List<String> getApplications(@PathVariable String master) {
+		def werckerService  = buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
+		if (werckerService) {
+			return werckerService.getApplications();
+		} else {
+			throw new MasterNotFoundException("Wercker Master '${master}' does not exist")
+		}
+	}
+	
+	@RequestMapping(value = '/pipelines/{master}/{org}/{app}', method = RequestMethod.GET)
+	List<String> getPipelines(@PathVariable("master") String master, @PathVariable("org") String org, @PathVariable("app") String app)  {
+		def werckerService  = buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
+		if (werckerService) {
+			return werckerService.getPipelines(org, app);
+		} else {
+			throw new MasterNotFoundException("Wercker Master '${master}' does not exist")
+		}
+	}
 
     static class MasterResults {
         String master
