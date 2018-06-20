@@ -20,6 +20,7 @@ class Run {
     String result
     String status
     Pipeline pipeline
+    Application application
 
     /*
     "id": "59bfcc67e134fb00016baf3f",
@@ -66,4 +67,8 @@ class Run {
 //		public void setFinishedAt(Instant finishedAt) {
 //			this.finishedAt = finishedAt;
 //		}
+	
+	public String toString() {
+		return "Run(" +id+"," + application?.name + "/"+pipeline?.name+")";
+	}
 }

@@ -44,6 +44,8 @@ import org.springframework.stereotype.Service
 import retrofit.RetrofitError
 
 import javax.annotation.PreDestroy
+
+import java.util.Map.Entry
 import java.util.stream.Collectors
 
 import static net.logstash.logback.argument.StructuredArguments.kv
@@ -99,7 +101,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
     @Override
     void poll(boolean sendEvents) {
         long startTime = System.currentTimeMillis()
-        log.info "WerckerBuildMonitor Polling cycle started: ${new Date()}"
+        log.info "WerckerBuildMonitor Polling cycle started: ${new Date()}, front50:${front50.isPresent()} echoService:${echoService.isPresent()} "
         buildMasters.filteredMap(BuildServiceProvider.WERCKER).keySet().parallelStream().forEach(
             { master -> pollSingle(new PollContext(master, !sendEvents)) }
         )
@@ -127,30 +129,36 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         List<PipelineDelta> delta = []
 
         WerckerService werckerService = buildMasters.map[master] as WerckerService
-		List<String> pipelines = front50.isPresent() ? getConfiguredJobs(master) : 
-		    werckerService.getApplicationAndPipelineNames()
-		pipelines.forEach( { pipeline -> processRuns(werckerService, master, pipeline, delta)})
+		if (front50.isPresent()) {
+            Set<String> pipelines = getConfiguredJobs(master);
+            pipelines.forEach( { pipeline -> processRuns(werckerService, master, pipeline, delta, null) } );
+		} else {
+			long since = System.currentTimeMillis() - (Long.valueOf(getPollInterval() * 2 * 1000))
+			Map<String, List<Run>> runs = werckerService.getRunsSince(since);
+			runs.keySet().forEach( { pipeline ->
+			    processRuns(werckerService, master, pipeline, delta, runs.get(pipeline)) 
+			} );
+		}
         log.debug("Took ${System.currentTimeMillis() - startTime}ms to retrieve Wercker pipelines (master: {})", kv("master", master))
         return new PipelinePollingDelta(master: master, items: delta)
     }
 	
-	List<String> getConfiguredJobs(String master) {
-		List<String> jobs = []
+	Set<String> getConfiguredJobs(String master) {
+		Set<String> jobs = [];
 		front50.get().getAllPipelineConfigs().forEach({ pipeline ->
 			pipeline['triggers'].forEach({ trigger ->
 				if (trigger['enabled'] && trigger['type'] == 'wercker' && trigger['master'] == master) {
-//log.info "~~ !! configured Trigger for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${trigger}"
+					log.debug "configured Trigger for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${trigger}"
 					jobs.add(trigger['job']);
 				}
 			})		
 			pipeline['stages'].forEach({ stage ->
 				if (stage['type'] == 'wercker' && stage['master'] == master) {
-//log.info "~~ !! configured Stage for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${stage}"
+					log.debug "configured Stage for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${stage}"
 					jobs.add(stage['job']);
 				}
 			})
 		})
-//		log.info "~~ getConfiguredJobs for ${master}: ${jobs}"
 		return jobs;
 	}
 	
@@ -188,8 +196,9 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 	 * wercker.pipeline = project|job
 	 * wercker.run = build
 	 */
-    private void processRuns(WerckerService werckerService, String master, String pipeline, List<PipelineDelta> delta) {
-		List<Run> allRuns = werckerService.getBuilds(pipeline)
+    private void processRuns( WerckerService werckerService, String master, String pipeline, 
+		List<PipelineDelta> delta, List<Run> runs) {
+		List<Run> allRuns = runs? runs : werckerService.getBuilds(pipeline);
         log.info "Wercker polling pipeline: ${pipeline}"
         if (allRuns.empty) {
             log.debug("[{}:{}] has no runs skipping...", kv("master", master), kv("pipeline", pipeline))
@@ -214,6 +223,8 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
             List<Run> currentlyBuilding = allBuilds.findAll { it.finishedAt == null }
 			//For initial run (cursor == null), use only the latest finished one
             List<Run> completedBuilds = cursor ? allBuilds.findAll { it.finishedAt != null } : [ getLastFinishedAt(allBuilds) ]
+            log.debug("[${master}:${pipeline}] currentlyBuilding: ${currentlyBuilding}" )
+            log.debug("[${master}:${pipeline}]   completedBuilds: ${completedBuilds}" )
             cursor = cursor?:lastBuildStamp
             Date lowerBound = new Date(cursor)
             if (!igorProperties.spinnaker.build.processBuildsOlderThanLookBackWindow) {
@@ -238,12 +249,11 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
     }
 
     private List<Run> onlyInLookBackWindow(List<Run> builds) {
-        use(TimeCategory) {
+        use(TimeCategory) { 
             def offsetSeconds = pollInterval.seconds
             def lookBackWindowMins = igorProperties.spinnaker.build.lookBackWindowMins.minutes
             Date lookBackDate = (offsetSeconds + lookBackWindowMins).ago
             return builds.stream().filter({
-//              Date buildEndDate = new Date((it.timestamp as Long) + it.duration)
                 Date buildEndDate = it.finishedAt
                 return buildEndDate.after(lookBackDate)
             }).collect(Collectors.toList())
@@ -270,12 +280,10 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
             pipeline.completedBuilds.forEach { run -> //build = run
                 Boolean eventPosted = cache.getEventPosted(master, pipeline.name, run.id)
 				GenericBuild build = toBuild(master, pipeline.name, run)
-                if (!eventPosted) {
+                if (!eventPosted && echoService.isPresent() && sendEvents) {
+                    postEvent(new GenericProject(pipeline.name, build), master)
                     log.info("[${master}:${pipeline.name}]:${build.id} event posted")
                     cache.setEventPosted(master, pipeline.name, run.id)
-                    if (sendEvents) {
-                        postEvent(new GenericProject(pipeline.name, build), master)
-                    }
                 }
             }
 

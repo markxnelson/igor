@@ -39,9 +39,13 @@ interface WerckerClient {
         @Header('Authorization') String authHeader,
         @Path('owner') owner)
 
-//    @GET('/api/v3/applications?limit=300')
-    @GET('/api/applications')
+    @GET('/api/v3/applications?limit=300')
+//    @GET('/api/applications')
     List<Application> getApplications(@Header('Authorization') String authHeader)
+	
+	@GET('/api/v3/applications?includePipelines=true&limit=300')
+//    @GET('/api/applications')
+	List<Application> getApplicationsWithPipelines(@Header('Authorization') String authHeader)
 
     @GET('/api/v3/runs')
     List<Run> getRunsForApplication(
@@ -52,6 +56,12 @@ interface WerckerClient {
     List<Run> getRunsForPipeline(
         @Header('Authorization') String authHeader,
         @Query('pipelineId') String pipelineId)
+	
+	
+	@GET('/api/v3/allruns')
+	List<Run> getRunsSince(
+		@Header('Authorization') String authHeader,
+		@Query('since') long since)
 
     @GET('/api/v3/workflows')
     List<Workflow> getWorkflowsForApplication(

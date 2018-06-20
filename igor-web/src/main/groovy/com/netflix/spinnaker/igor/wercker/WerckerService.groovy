@@ -10,13 +10,19 @@ import com.netflix.spinnaker.igor.wercker.model.Application
 import com.netflix.spinnaker.igor.wercker.model.Pipeline
 import com.netflix.spinnaker.igor.wercker.model.Run
 import com.netflix.spinnaker.igor.wercker.model.RunPayload
+import com.netflix.spinnaker.hystrix.SimpleHystrixCommand
 import groovy.util.logging.Slf4j
 import retrofit.RetrofitError
 import retrofit.client.Response
 import retrofit.mime.TypedByteArray
 import com.netflix.spinnaker.igor.config.WerckerProperties.WerckerHost
+import com.netflix.spinnaker.igor.jenkins.client.model.JobConfig
+import com.netflix.spinnaker.igor.jenkins.client.model.JobList
+
 import static com.netflix.spinnaker.igor.model.BuildServiceProvider.WERCKER
 import static net.logstash.logback.argument.StructuredArguments.kv
+
+import java.util.List
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -73,17 +79,18 @@ class WerckerService implements BuildService {
     GenericBuild getGenericBuild(final String job, final int buildNumber) {
         //UI the user should be org
         //Note - GitlabCI throws UnsupportedOperationException for this - why is that?
-        GenericBuild someBuild = new GenericBuild()
-        someBuild.name = job
-        someBuild.building = true
-        someBuild.fullDisplayName = "Wercker Job " + job + " [" + buildNumber + "]"
-        someBuild.number = buildNumber
+        GenericBuild genericBuild = new GenericBuild()
+        genericBuild.name = job
+        genericBuild.building = true
+        genericBuild.fullDisplayName = "Wercker Job " + job + " [" + buildNumber + "]"
+        genericBuild.number = buildNumber
 		//API
 //      someBuild.url = address + "api/v3/runs/" + cache.getRunID(groupKey, job, buildNumber) 
 		//UI the user should be org
         String[] split = job.split(SPLITOR)
-        String app = split[0]
-        String pipeline = split[1]
+        String org = split[0]
+        String app = split[1]
+        String pipeline = split[2]
         String runId = cache.getRunID(groupKey, job, buildNumber)
         if (runId == null) {
             throw new BuildController.BuildJobError(
@@ -95,7 +102,7 @@ class WerckerService implements BuildService {
         genericBuild.building = (run.finishedAt == null)
         genericBuild.fullDisplayName = "Wercker Job " + job + " [" + runId + "]"
         String addr = address.endsWith("/") ? address.substring(0, address.length()-1) : address
-        genericBuild.url = String.join("/", addr, user, app, "runs", pipeline, runId)
+        genericBuild.url = String.join("/", addr, org, app, "runs", pipeline, runId)
         genericBuild.result = mapRunToResult(run)
         return genericBuild
     }
@@ -133,12 +140,16 @@ class WerckerService implements BuildService {
 
     @Override
     int triggerBuildWithParameters(final String appAndPipelineName, final Map<String, String> queryParameters) {
-        String[] split = appAndPipelineName.split("~")
-        String appName = split[0]
-        String pipelineName = split[1]
+        String[] split = appAndPipelineName.split(SPLITOR)
+		String org = split[0]
+		String appName = split[1]
+		String pipelineName = split[2]
+		
         List<Pipeline> pipelines = werckerClient.getPipelinesForApplication(
-            authHeaderValue, user, appName)
-        Pipeline pipeline = pipelines.find {p -> pipelineName.equals(p.pipelineName)}
+            authHeaderValue, org, appName)
+		List<String> pnames = pipelines.collect { it.name + "|" +it.pipelineName + "|" + it.id }
+        log.debug "triggerBuildWithParameters pipelines: ${pnames}"
+        Pipeline pipeline = pipelines.find {p -> pipelineName.equals(p.name)}
         if (pipeline) {
             log.info("Triggering run for pipeline {} with id {}",
                 kv("pipelineName", pipelineName), kv("pipelineId", pipeline.id))
@@ -181,8 +192,52 @@ class WerckerService implements BuildService {
 
         }
     }
-
-    public List<String> getApplicationAndPipelineNames() {
+	
+	public List<String> getJobs() {
+		List<String> appAndPipelineNames = []
+		long start = System.currentTimeMillis();
+		List<Application> apps = applications();
+		log.debug "getApplications: ${apps.size()} applications in ${System.currentTimeMillis() - start}ms!!"
+		start = System.currentTimeMillis()
+		apps.each { app ->
+            try {
+				List<Pipeline> pipelines = app.pipelines? app.pipelines: pipelines(app.owner.name, app.name);
+				appAndPipelineNames.addAll( pipelines.collect { 
+					it.type + SPLITOR + app.owner.name + SPLITOR + app.name + SPLITOR + it.name } )
+				
+//                pipelines.each { pipeline ->
+//                    String pipelineName = pipeline.type + SPLITOR +
+//					    app.owner.name + SPLITOR + app.name + SPLITOR + pipeline.name;
+//                    appAndPipelineNames.add(pipelineName)
+//				}
+			} catch(retrofit.RetrofitError err) {
+				log.info "Error getting pipelines for ${app.owner.name } ${app.name} ${err} ${err.getClass()}"
+			}
+		}
+		log.info "!! getPipelines: ${appAndPipelineNames.size()} pipelines in ${System.currentTimeMillis() - start}ms!!"
+        return appAndPipelineNames
+	}
+	
+	List<Application> applications() {
+		new SimpleHystrixCommand<List<Application>>(groupKey, buildCommandKey("getApplications"), {
+		    return werckerClient.getApplicationsWithPipelines(authHeaderValue)
+		}).execute();
+	}
+	
+	List<Pipeline> pipelines(String org, String app) {
+//429 too many		new SimpleHystrixCommand<List<Pipeline>>(groupKey, buildCommandKey("getPipelines"), {
+		    return werckerClient.getPipelinesForApplication(authHeaderValue, org, app)
+//		}).execute();
+	}
+	
+  /**
+   * A CommandKey should be unique per group (to ensure broken circuits do not span Wercker masters)
+   */
+    private String buildCommandKey(String id) {
+        return "${groupKey}-${id}"
+    }
+	
+    public List<String> XgetApplicationAndPipelineNames() {
 		List<String> appAndPipelineNames = []
 		if (organizations != null && !organizations.isEmpty()) {
 			List<String> orgs = organizations
@@ -203,8 +258,13 @@ class WerckerService implements BuildService {
 				apps.forEach({app ->
 				    try {
 						List<Pipeline> pipelines = werckerClient.getPipelinesForApplication(authHeaderValue, org, app)
-						pipelines.each {pipeline ->
-							appAndPipelineNames.add(org + SPLITOR + app + SPLITOR + pipeline.name)
+//						appAndPipelineNames = pipelines
+//						    .findAll{ it.type != 'pipeline' }
+//							.collect{ org + SPLITOR + app + SPLITOR + it.name }
+						pipelines.each { pipeline ->
+							if (pipeline.type == 'git') {
+								appAndPipelineNames.add(org + SPLITOR + app + SPLITOR + pipeline.name)
+							}
 						}
 					} catch(retrofit.RetrofitError err) {
 						log.info "Error getting pipelines for ${org} ${app} pipelines: ${err} ${err.getClass()}"
@@ -212,32 +272,31 @@ class WerckerService implements BuildService {
 				});
 			}
 		} else {
-		long start = System.currentTimeMillis()
-//	        List<Application> apps = werckerClient.getApplicationsByOwner(authHeaderValue, user).each {a -> a.name}
+		    long start = System.currentTimeMillis()
 		    List<Application> apps = werckerClient.getApplications(authHeaderValue)
-		log.info "~~~ getAllApps ${apps.size()} ${System.currentTimeMillis() - start}ms"
-		start = System.currentTimeMillis()
-//			log.info "~~~ getApplicationAndPipelineNames getAllApps : ${System.currentTimeMillis() - start}"
+		    log.debug "getAllApps ${apps.size()} ${System.currentTimeMillis() - start}ms"
+		    start = System.currentTimeMillis()
 			start = System.currentTimeMillis()
 	        apps.each {app ->
 				try {
 					
 		            List<Pipeline> pipelines = werckerClient.getPipelinesForApplication(authHeaderValue, app.owner.name, app.name)
-		            pipelines.each { pipeline ->
-						String pipelineName = app.owner.name + SPLITOR + app.name + SPLITOR + pipeline.name
-		                appAndPipelineNames.add(pipelineName)
+					pipelines.each { pipeline ->
+						if (pipeline.type == 'git') {
+							String pipelineName = app.owner.name + SPLITOR + app.name + SPLITOR + pipeline.name
+							appAndPipelineNames.add(pipelineName)
+						}
 		            }
 				} catch(retrofit.RetrofitError err) {
 					log.info "Error getting pipelines for ${app.owner.name } ${app.name} ${err} ${err.getClass()}"
 				}	
 	        }
-		log.info "~~~ getAllPipeline: ${System.currentTimeMillis() - start}ms ${appAndPipelineNames.size()}"
+		    log.debug "getAllPipeline: ${System.currentTimeMillis() - start}ms ${appAndPipelineNames.size()}"
 		}
         return appAndPipelineNames
     }
 	
     public List<String> getApplications() {
-		log.info "~~~ ${groupKey}.getApplications for ${organizations}"
 		List<String> orgApps = []
 		long start = System.currentTimeMillis()
 		if (organizations != null && !organizations.isEmpty()) {
@@ -246,11 +305,9 @@ class WerckerService implements BuildService {
 				orgs = organizations.collect()
 				orgs.add(user);
 			}
-log.info "       ~~~~ for orgS${orgs}"
 			orgs.each { orgApp ->
 				String org = orgApp;
 				String[] split = orgApp.split(SPLITOR)
-log.info "       ~~~~    for org ${org}"
 				if (split.size() == 1) {
 					orgApps.addAll(appsOf(org))					
 				} else if (split.size() == 2) {
@@ -265,7 +322,7 @@ log.info "       ~~~~    for org ${org}"
 		} else {
 		    orgApps = werckerClient.getApplications(authHeaderValue).collect { it.owner.name + SPLITOR + it.name }
 		}
-		log.info "~~~ ${groupKey}.getApplications: ${orgApps}  ${System.currentTimeMillis() - start}ms"
+		log.debug "${groupKey}.getApplications: ${orgApps}  ${System.currentTimeMillis() - start}ms"
         return orgApps
     }
 	
@@ -273,21 +330,12 @@ log.info "       ~~~~    for org ${org}"
 		return werckerClient.getApplicationsByOwner(authHeaderValue, org).collect { org + SPLITOR + it.name };
 	}
 
-    public List<String> getPipelines(String applicationName) {
-		String[] split = applicationName.split(SPLITOR)
-		String org = (split.size() == 1)? user : split[0]
-		String app = (split.size() == 1)? applicationName : split[1]
-        List<String> pipelines  = werckerClient.getPipelinesForApplication(authHeaderValue, org, app)
-		log.info "~~~ ${groupKey}.getPipelines for ${applicationName}: ${pipelines}"
-		return pipelines;
-    }
-	
 	public List<String> getPipelines(String org, String app) {
-		log.info "~~~ ${groupKey}.getPipelines for ${org} ${app}"
+		log.debug "${groupKey}.getPipelines for ${org} ${app}"
 		List<String> pipelines  = werckerClient
 		  .getPipelinesForApplication(authHeaderValue, org, app)
 		  .collect { it.name }
-		log.info "~~~ ${groupKey}.getPipelines for ${org} ${app} ${pipelines}"
+		log.debug "${groupKey}.getPipelines for ${org} ${app} ${pipelines}"
 		return pipelines;
 	}
 
@@ -301,17 +349,51 @@ log.info "       ~~~~    for org ${org}"
         String owner = split[0]
         String appName = split[1]
         String pipelineName = split[2]
-        List<Run> runs = []
 		String pipelineId = cache.getPipelineID(groupKey, appAndPipelineName)
 		if (pipelineId == null) {
-        Pipeline matchingPipeline = werckerClient.getPipelinesForApplication(
-            authHeaderValue, owner, appName).find {pipeline -> pipelineName == pipeline.name}
-			if (matchingPipeline) {
-				pipelineId = matchingPipeline.id;
-				cache.setPipelineID(groupKey, appAndPipelineName, pipelineId)
-			}
+			try {		
+				List<Pipeline> pipelines = werckerClient.getPipelinesForApplication(authHeaderValue, owner, appName)
+				Pipeline matchingPipeline = pipelines.find {pipeline -> pipelineName == pipeline.name}
+				if (matchingPipeline) {
+					pipelineId = matchingPipeline.id;
+					cache.setPipelineID(groupKey, appAndPipelineName, pipelineId)
+				}
+			} catch(retrofit.RetrofitError err) {
+				log.info "Error getting pipelines for ${owner} ${appName} ${err} ${err.getClass()}"
+			}	
 		}
-		log.info "~~~getBuilds for ${groupKey} ${appAndPipelineName} ${pipelineId}"
-        return werckerClient.getRunsForPipeline(authHeaderValue, pipelineId)
+		log.debug "getBuilds for ${groupKey} ${appAndPipelineName} ${pipelineId}"
+        return pipelineId? werckerClient.getRunsForPipeline(authHeaderValue, pipelineId) : [];
     }
+	
+	String pipelineKey(Run run) {
+		return run.getApplication().owner.name + SPLITOR + 
+		       run.getApplication().name + SPLITOR + 
+			   run.getPipeline().name;
+	}
+	
+	Map<String, List<Run>> getRunsSince(long since) {
+		Map<String, List<Run>> pipelineRuns = [:];
+		List<Run> allRuns = werckerClient.getRunsSince(authHeaderValue, since); //1528430400000L
+		log.debug "getRunsSince ${since} : ${allRuns.size()} ${allRuns}"
+		allRuns.forEach({ run ->
+			String pipelineKey = pipelineKey(run);
+			run.startedAt = run.startedAt?:run.createdAt;
+			List<Run> runs = pipelineRuns.get(pipelineKey);
+			if (runs) {
+				runs.add(run);
+			} else {
+				runs = [run];
+				pipelineRuns.put(pipelineKey, runs);
+			}
+		});
+		return pipelineRuns;
+	}
+	
+	//TODO this is Jenkins JobConfig
+	JobConfig getJobConfig(String jobName) {
+		return new JobConfig(
+			description: 'WerckerPipeline ' + jobName,
+			name: jobName);
+	}
 }

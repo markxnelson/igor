@@ -141,16 +141,9 @@ class InfoController {
 
             return jobList
         } else if (buildMasters.map.containsKey(master)) {
-			def werckerService  = 
-			   buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
-//            com.netflix.spinnaker.igor.wercker.WerckerService werckerService = 
-//			   buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master]
-
-            //If wercker, use getApplicationAndPipelineNames
-
+			def werckerService = buildMasters.filteredMap(BuildServiceProvider.WERCKER)[master] 
             if (werckerService) {
-				com.netflix.spinnaker.igor.wercker.WerckerService wercker = werckerService
-                return wercker.getApplicationAndPipelineNames()
+                return werckerService.getJobs()
             } else {
                 return buildCache.getJobNames(master)
             }

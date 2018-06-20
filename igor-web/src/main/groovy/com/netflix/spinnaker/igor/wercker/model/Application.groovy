@@ -32,4 +32,5 @@ class Application {
     String name;
     Owner owner;
     String privacy;
+	List<Pipeline> pipelines;
 }
