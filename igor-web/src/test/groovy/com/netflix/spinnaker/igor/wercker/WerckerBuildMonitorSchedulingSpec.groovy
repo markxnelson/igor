@@ -26,10 +26,10 @@ import spock.lang.Subject
 
 import java.util.Optional
 import java.util.concurrent.TimeUnit
+
 /**
  * Ensures that build monitor runs periodically
  */
-@SuppressWarnings(['PropertyName'])
 class WerckerBuildMonitorSchedulingSpec extends Specification {
 
     WerckerCache cache = Mock(WerckerCache)

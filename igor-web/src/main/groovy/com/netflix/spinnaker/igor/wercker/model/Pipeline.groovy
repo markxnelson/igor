@@ -11,6 +11,7 @@ package com.netflix.spinnaker.igor.wercker.model
 /**
  * Represents a Wercker Pipeline
  */
+@groovy.transform.ToString
 class Pipeline {
     String id
     String url

@@ -14,6 +14,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 /**
  * Represents a Wercker Run
  */
+@groovy.transform.ToString
 class Run {
     String id
     String url

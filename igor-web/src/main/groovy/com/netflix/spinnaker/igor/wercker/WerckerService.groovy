@@ -195,7 +195,6 @@ class WerckerService implements BuildService {
         } else {
             throw new BuildController.InvalidJobParameterException(
                 "Could not retrieve pipeline ${pipelineName} for application ${appName} from Wercker!")
-
         }
     }
 

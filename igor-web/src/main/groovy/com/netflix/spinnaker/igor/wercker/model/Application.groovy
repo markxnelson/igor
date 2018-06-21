@@ -11,6 +11,7 @@ package com.netflix.spinnaker.igor.wercker.model
 /**
  * Represents a Wercker application
  */
+@groovy.transform.ToString
 class Application {
     /*    {
         "id": "5ac37f978499f1010011a6df",
