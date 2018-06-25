@@ -17,7 +17,6 @@ import com.netflix.spinnaker.igor.build.model.Result
 import com.netflix.spinnaker.igor.config.WerckerProperties
 import com.netflix.spinnaker.igor.history.EchoService
 import com.netflix.spinnaker.igor.history.model.GenericBuildContent
-import com.netflix.spinnaker.igor.service.Front50Service
 
 import com.netflix.spinnaker.igor.history.model.GenericBuildEvent
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
@@ -46,7 +45,6 @@ import static net.logstash.logback.argument.StructuredArguments.kv
  * Monitors new wercker builds
  */
 @Service
-@SuppressWarnings('CatchException')
 @ConditionalOnProperty('wercker.enabled')
 class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePollingDelta> {
 
@@ -54,7 +52,6 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
     private final BuildMasters buildMasters
     private final boolean pollingEnabled
     private final Optional<EchoService> echoService
-    private final Optional<Front50Service> front50
     private final WerckerProperties werckerProperties
 
     @Autowired
@@ -65,14 +62,12 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
                         BuildMasters buildMasters,
                         @Value('${wercker.polling.enabled:true}') boolean pollingEnabled,
                         Optional<EchoService> echoService,
-						Optional<Front50Service> front50Service,
                         WerckerProperties werckerProperties) {
         super(properties, registry, discoveryClient)
         this.cache = cache
         this.buildMasters = buildMasters
         this.pollingEnabled = pollingEnabled
         this.echoService = echoService
-		this.front50 = front50Service
         this.werckerProperties = werckerProperties
     }
 
@@ -93,7 +88,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
     @Override
     void poll(boolean sendEvents) {
         long startTime = System.currentTimeMillis()
-        log.info "WerckerBuildMonitor Polling cycle started: ${new Date()}, front50:${front50.isPresent()} echoService:${echoService.isPresent()} "
+        log.info "WerckerBuildMonitor Polling cycle started: ${new Date()}, echoService:${echoService.isPresent()} "
         buildMasters.filteredMap(BuildServiceProvider.WERCKER).keySet().parallelStream().forEach(
             { master -> pollSingle(new PollContext(master, !sendEvents)) }
         )
@@ -121,38 +116,14 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         List<PipelineDelta> delta = []
 
         WerckerService werckerService = buildMasters.map[master] as WerckerService
-		if (front50.isPresent()) {
-            Set<String> pipelines = getConfiguredJobs(master);
-            pipelines.forEach( { pipeline -> processRuns(werckerService, master, pipeline, delta, null) } );
-		} else {
-			long since = System.currentTimeMillis() - (Long.valueOf(getPollInterval() * 2 * 1000))
-			Map<String, List<Run>> runs = werckerService.getRunsSince(since);
-			runs.keySet().forEach( { pipeline ->
-			    processRuns(werckerService, master, pipeline, delta, runs.get(pipeline)) 
-			} );
-		}
+        long since = System.currentTimeMillis() - (Long.valueOf(getPollInterval() * 2 * 1000))
+        Map<String, List<Run>> runs = werckerService.getRunsSince(since);
+        runs.keySet().forEach( { pipeline ->
+            processRuns(werckerService, master, pipeline, delta, runs.get(pipeline)) 
+        } );
         log.debug("Took ${System.currentTimeMillis() - startTime}ms to retrieve Wercker pipelines (master: {})", kv("master", master))
         return new PipelinePollingDelta(master: master, items: delta)
     }
-	
-	Set<String> getConfiguredJobs(String master) {
-		Set<String> jobs = [];
-		front50.get().getAllPipelineConfigs().forEach({ pipeline ->
-			pipeline['triggers'].forEach({ trigger ->
-			    if (trigger['enabled'] && trigger['type'] == 'wercker' && trigger['master'] == master) {
-					log.debug "configured Trigger for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${trigger}"
-					jobs.add(trigger['job']);
-				}
-			})		
-			pipeline['stages'].forEach({ stage ->
-				if (stage['type'] == 'wercker' && stage['master'] == master) {
-					log.debug "configured Stage for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${stage}"
-					jobs.add(stage['job']);
-				}
-			})
-		})
-		return jobs;
-	}
 	
 	static Comparator<Run> finishedAtComparator = new Comparator<Run>() {
 		@Override

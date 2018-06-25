@@ -23,7 +23,6 @@ import com.netflix.spinnaker.kork.eureka.RemoteStatusChangedEvent
 import com.netflix.spinnaker.kork.jedis.EmbeddedRedis
 import com.netflix.spinnaker.kork.jedis.RedisClientDelegate
 import com.netflix.spinnaker.igor.history.model.Event
-import com.netflix.spinnaker.igor.service.Front50Service
 import com.netflix.spinnaker.igor.config.WerckerProperties.WerckerHost
 
 import rx.schedulers.TestScheduler
@@ -85,7 +84,6 @@ class WerckerBuildMonitorSpec extends Specification {
 			buildMasters,
 			true,
 			Optional.of(echoService),
-			Optional.empty(),
 			new WerckerProperties()
 		)
 		monitor.worker = scheduler.createWorker()
@@ -128,7 +126,6 @@ class WerckerBuildMonitorSpec extends Specification {
 			buildMasters,
 			true,
 			Optional.of(echoService),
-			Optional.empty(),
 			new WerckerProperties()
 		)
 		monitor.worker = scheduler.createWorker()
@@ -164,7 +161,6 @@ class WerckerBuildMonitorSpec extends Specification {
 			buildMasters,
 			true,
 			Optional.of(echoService),
-			Optional.empty(),
 			new WerckerProperties()
 		)
 		monitor.worker = scheduler.createWorker()
@@ -224,7 +220,6 @@ class WerckerBuildMonitorSpec extends Specification {
 			buildMasters,
 			true,
 			Optional.of(echoService),
-			Optional.empty(),
 			new WerckerProperties()
 		)
 		monitor.worker = scheduler.createWorker()
