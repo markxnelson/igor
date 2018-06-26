@@ -224,7 +224,7 @@ class WerckerBuildMonitorSpec extends Specification {
 		)
 		monitor.worker = scheduler.createWorker()
 		cache.getBuildNumber(_, _, _) >> 1
-		client.getRunsSince(_,_) >> []
+		client.getRunsSince(_,_,_,_) >> []
 		
 		when:
 		monitor.onApplicationEvent(Mock(RemoteStatusChangedEvent))
@@ -258,7 +258,7 @@ class WerckerBuildMonitorSpec extends Specification {
 			runOf('run6', now-10, now-2, apps[0], apps[0].pipelines[0]),
 			runOf('run6', now-10, now-3, apps[0], apps[0].pipelines[0]),
 		]
-		client.getRunsSince(_,_) >> runs1
+		client.getRunsSince(_,_,_,_) >> runs1
 		cache.getLastPollCycleTimestamp(_, _) >> (now - 1000)
 		cache.getBuildNumber(_, _, _) >> 1
 		scheduler.advanceTimeBy(2L, TimeUnit.SECONDS.MILLISECONDS)

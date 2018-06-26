@@ -31,13 +31,9 @@ interface WerckerClient {
         @Header('Authorization') String authHeader,
         @Path('owner') owner)
 
-    @GET('/api/v3/applications?limit=300')
-//    @GET('/api/applications')
-    List<Application> getApplications(@Header('Authorization') String authHeader)
-	
-	@GET('/api/v3/applications?includePipelines=true&limit=300')
-//    @GET('/api/applications')
-	List<Application> getApplicationsWithPipelines(@Header('Authorization') String authHeader)
+    //http://localhost:3000/api/spinnaker/v1/applications?limit=5
+    @GET('/api/spinnaker/v1/applications')
+    List<Application> getApplications(@Header('Authorization') String authHeader, @Query('limit') int limit)
 
     @GET('/api/v3/runs')
     List<Run> getRunsForApplication(
@@ -48,11 +44,13 @@ interface WerckerClient {
     List<Run> getRunsForPipeline(
         @Header('Authorization') String authHeader,
         @Query('pipelineId') String pipelineId)
-	
-	
-	@GET('/api/v3/allruns')
+
+	//http://localhost:3000/api/spinnaker/v1/runs?since=1528430400000&limit=5&branch=master”
+	@GET('/api/spinnaker/v1/runs')
 	List<Run> getRunsSince(
 		@Header('Authorization') String authHeader,
+		@Query('branch') String branch,
+		@Query('limit') int limit,
 		@Query('since') long since)
 
     @GET('/api/v3/workflows')

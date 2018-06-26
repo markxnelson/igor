@@ -42,7 +42,7 @@ import java.util.stream.Collectors
 import static net.logstash.logback.argument.StructuredArguments.kv
 
 /**
- * Monitors new wercker builds
+ * Monitors new wercker runs
  */
 @Service
 @ConditionalOnProperty('wercker.enabled')
@@ -117,10 +117,15 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 
         WerckerService werckerService = buildMasters.map[master] as WerckerService
         long since = System.currentTimeMillis() - (Long.valueOf(getPollInterval() * 2 * 1000))
-        Map<String, List<Run>> runs = werckerService.getRunsSince(since);
-        runs.keySet().forEach( { pipeline ->
-            processRuns(werckerService, master, pipeline, delta, runs.get(pipeline)) 
-        } );
+		try {
+			Map<String, List<Run>> runs = werckerService.getRunsSince(since);
+			runs.keySet().forEach( { pipeline ->
+				processRuns(werckerService, master, pipeline, delta, runs.get(pipeline))
+			} );
+		} catch (e) {
+			log.error("Error processing runs for Wercker[{}]", kv("master", master), e)
+		}
+		
         log.debug("Took ${System.currentTimeMillis() - startTime}ms to retrieve Wercker pipelines (master: {})", kv("master", master))
         return new PipelinePollingDelta(master: master, items: delta)
     }
@@ -208,7 +213,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
             log.error("Error processing runs for [{}:{}]", kv("master", master), kv("pipeline", pipeline), e)
             if (e.cause instanceof RetrofitError) {
                 def re = (RetrofitError) e.cause
-                log.error("Error communicating with jenkins for [{}:{}]: {}", kv("master", master), kv("pipeline", pipeline), kv("url", re.url), re);
+                log.error("Error communicating with Wercker for [{}:{}]: {}", kv("master", master), kv("pipeline", pipeline), kv("url", re.url), re);
             }
         }
     }
@@ -246,7 +251,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
                 Boolean eventPosted = cache.getEventPosted(master, pipeline.name, run.id)
 				GenericBuild build = toBuild(master, pipeline.name, run)
                 if (!eventPosted && echoService.isPresent() && sendEvents) {
-                    log.info("[${master}:${pipeline.name}]:${build.id} event posted")
+                    log.debug("[${master}:${pipeline.name}]:${build.id} event posted")
                     postEvent(new GenericProject(pipeline.name, build), master)
                     cache.setEventPosted(master, pipeline.name, run.id)
                 }

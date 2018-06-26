@@ -28,6 +28,8 @@ class Run {
     int progress
     String result
     String status
+	
+	Owner user
     Pipeline pipeline
     Application application
 

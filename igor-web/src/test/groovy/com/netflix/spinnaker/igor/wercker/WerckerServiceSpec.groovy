@@ -37,7 +37,7 @@ class WerckerServiceSpec extends Specification {
 	
 	void 'get pipelines as jobs'() {
 		setup:
-		client.getApplicationsWithPipelines(_) >> [
+		client.getApplications(_,_) >> [
 			appOf('myApp1', 'coo', [pipeOf('myPipeA', 'newType')]),
 			appOf('myApp2', 'foo', [pipeOf('myPipeX', 'x'), pipeOf('myPipeY', 'y')])
 		]
@@ -94,7 +94,7 @@ class WerckerServiceSpec extends Specification {
 			runOf('3', now-10, appOf('app1', 'org1', []), pipeOf('p3', 'git')),
 			runOf('4', now-10, appOf('app2', 'org1', []), pipeOf('p2', 'git')),
 		]
-		client.getRunsSince(_,since) >> runs1
+		client.getRunsSince(_,_,_,since) >> runs1
 		
 		expect:
 		service.getRunsSince(since).size() == 3
