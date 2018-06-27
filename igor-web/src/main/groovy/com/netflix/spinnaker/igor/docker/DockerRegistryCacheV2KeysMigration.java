@@ -24,6 +24,7 @@ import com.netflix.spinnaker.kork.jedis.RedisClientDelegate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import redis.clients.jedis.Jedis;
@@ -200,6 +201,7 @@ public class DockerRegistryCacheV2KeysMigration {
             try {
                 result = jedis.scan(cursor, params);
                 numMigrated += oldKeysCallback.apply(result.getResult());
+                cursor = result.getStringCursor();
                 failures = 0;
             } catch (JedisException e) {
                 failures++;
@@ -210,7 +212,7 @@ public class DockerRegistryCacheV2KeysMigration {
                 log.error("Failed migrating v1 key batch, retrying", e);
                 Thread.sleep(5000);
             }
-        } while (result == null || !result.getStringCursor().equals("0"));
+        } while (result == null || !cursor.equals("0"));
 
         return numMigrated;
     }

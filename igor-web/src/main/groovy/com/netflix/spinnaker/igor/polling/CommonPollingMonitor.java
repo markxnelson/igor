@@ -27,10 +27,12 @@ import rx.Scheduler;
 import rx.schedulers.Schedulers;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static java.lang.String.format;
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
 public abstract class CommonPollingMonitor<I extends DeltaItem, T extends PollingDelta<I>> implements PollingMonitor, PollAccess {
@@ -50,19 +52,24 @@ public abstract class CommonPollingMonitor<I extends DeltaItem, T extends Pollin
     private final Id pollCycleFailedId;
     protected final Id missedNotificationId;
 
+    private final Optional<LockService> lockService;
+
     public CommonPollingMonitor(IgorConfigurationProperties igorProperties,
                                 Registry registry,
-                                Optional<DiscoveryClient> discoveryClient) {
-        this(igorProperties, registry, discoveryClient, Schedulers.io());
+                                Optional<DiscoveryClient> discoveryClient,
+                                Optional<LockService> lockService) {
+        this(igorProperties, registry, discoveryClient, lockService, Schedulers.io());
     }
 
     public CommonPollingMonitor(IgorConfigurationProperties igorProperties,
                                 Registry registry,
                                 Optional<DiscoveryClient> discoveryClient,
+                                Optional<LockService> lockService,
                                 Scheduler scheduler) {
         this.igorProperties = igorProperties;
         this.registry = registry;
         this.discoveryClient = discoveryClient;
+        this.lockService = lockService;
         this.worker = scheduler.createWorker();
 
         itemsCachedId = registry.createId("pollingMonitor.newItems");
@@ -106,6 +113,18 @@ public abstract class CommonPollingMonitor<I extends DeltaItem, T extends Pollin
 
     @Override
     public void pollSingle(PollContext ctx) {
+        if (lockService.isPresent()) {
+            // Lock duration of the full poll interval; if the work is completed ahead of that time, it'll be released.
+            // If anything, this will mean builds are polled more often, rather than less.
+            final String lockName = format("%s.%s", getName(), ctx.partitionName);
+            lockService.get().acquire(lockName, Duration.ofSeconds(getPollInterval()), () -> internalPollSingle(ctx));
+        } else {
+            log.warn("****LOCKING NOT ENABLED***, not recommended running on more than one node.");
+            internalPollSingle(ctx);
+        }
+    }
+
+    protected void internalPollSingle(PollContext ctx) {
         String monitorName = getClass().getSimpleName();
 
         try {

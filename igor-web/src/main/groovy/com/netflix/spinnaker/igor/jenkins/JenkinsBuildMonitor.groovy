@@ -29,6 +29,7 @@ import com.netflix.spinnaker.igor.jenkins.service.JenkinsService
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
 import com.netflix.spinnaker.igor.polling.CommonPollingMonitor
 import com.netflix.spinnaker.igor.polling.DeltaItem
+import com.netflix.spinnaker.igor.polling.LockService
 import com.netflix.spinnaker.igor.polling.PollContext
 import com.netflix.spinnaker.igor.polling.PollingDelta
 import com.netflix.spinnaker.igor.service.BuildMasters
@@ -61,12 +62,13 @@ class JenkinsBuildMonitor extends CommonPollingMonitor<JobDelta, JobPollingDelta
     JenkinsBuildMonitor(IgorConfigurationProperties properties,
                         Registry registry,
                         Optional<DiscoveryClient> discoveryClient,
+                        Optional<LockService> lockService,
                         JenkinsCache cache,
                         BuildMasters buildMasters,
                         @Value('${jenkins.polling.enabled:true}') boolean pollingEnabled,
                         Optional<EchoService> echoService,
                         JenkinsProperties jenkinsProperties) {
-        super(properties, registry, discoveryClient)
+        super(properties, registry, discoveryClient, lockService)
         this.cache = cache
         this.buildMasters = buildMasters
         this.pollingEnabled = pollingEnabled
@@ -92,7 +94,7 @@ class JenkinsBuildMonitor extends CommonPollingMonitor<JobDelta, JobPollingDelta
     void poll(boolean sendEvents) {
         long startTime = System.currentTimeMillis()
         log.info "Polling cycle started: ${new Date()}"
-        buildMasters.filteredMap(BuildServiceProvider.JENKINS).keySet().parallelStream().forEach(
+        buildMasters.filteredMap(BuildServiceProvider.JENKINS).keySet().stream().forEach(
             { master -> pollSingle(new PollContext(master, !sendEvents)) }
         )
         log.info "Polling cycle done in ${System.currentTimeMillis() - startTime}ms"
@@ -204,22 +206,23 @@ class JenkinsBuildMonitor extends CommonPollingMonitor<JobDelta, JobPollingDelta
     protected void commitDelta(JobPollingDelta delta, boolean sendEvents) {
         String master = delta.master
 
-        delta.items.parallelStream().forEach { job ->
+        delta.items.stream().forEach { job ->
             // post events for finished builds
             job.completedBuilds.forEach { build ->
                 Boolean eventPosted = cache.getEventPosted(master, job.name, job.cursor, build.number)
                 if (!eventPosted) {
-                    log.debug("[${master}:${job.name}]:${build.number} event posted")
-                    cache.setEventPosted(master, job.name, job.cursor, build.number)
                     if (sendEvents) {
                         postEvent(new Project(name: job.name, lastBuild: build), master)
+                        log.debug("[${master}:${job.name}]:${build.number} event posted")
+                        cache.setEventPosted(master, job.name, job.cursor, build.number)
                     }
                 }
             }
 
             // advance cursor when all builds have completed in the interval
             if (job.runningBuilds.isEmpty()) {
-                log.info("[{}:{}] has no other builds between [${job.lowerBound} - ${job.upperBound}], advancing cursor to ${job.lastBuildStamp}", kv("master", master), kv("job", job.name))
+                log.info("[{}:{}] has no other builds between [${job.lowerBound} - ${job.upperBound}], " +
+                    "advancing cursor to ${job.lastBuildStamp}", kv("master", master), kv("job", job.name))
                 cache.pruneOldMarkers(master, job.name, job.cursor)
                 cache.setLastPollCycleTimestamp(master, job.name, job.lastBuildStamp)
             }
