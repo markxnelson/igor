@@ -20,8 +20,6 @@ import com.netflix.spinnaker.igor.wercker.model.Owner
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
 import com.netflix.spinnaker.igor.service.BuildMasters
 import com.netflix.spinnaker.kork.eureka.RemoteStatusChangedEvent
-import com.netflix.spinnaker.kork.jedis.EmbeddedRedis
-import com.netflix.spinnaker.kork.jedis.RedisClientDelegate
 import com.netflix.spinnaker.igor.history.model.Event
 import com.netflix.spinnaker.igor.config.WerckerProperties.WerckerHost
 

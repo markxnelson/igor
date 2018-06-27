@@ -17,8 +17,6 @@ import com.netflix.spinnaker.igor.wercker.model.Run
 import com.netflix.spinnaker.igor.model.BuildServiceProvider
 import com.netflix.spinnaker.igor.service.BuildMasters
 import com.netflix.spinnaker.kork.eureka.RemoteStatusChangedEvent
-import com.netflix.spinnaker.kork.jedis.EmbeddedRedis
-import com.netflix.spinnaker.kork.jedis.RedisClientDelegate
 
 import rx.schedulers.TestScheduler
 import spock.lang.Specification

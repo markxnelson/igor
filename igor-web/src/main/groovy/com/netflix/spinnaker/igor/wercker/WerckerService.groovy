@@ -41,7 +41,6 @@ class WerckerService implements BuildService {
     String groupKey;
     WerckerClient werckerClient
     String user
-	List<String> organizations
     String token
     String authHeaderValue
 	String address
@@ -62,7 +61,6 @@ class WerckerService implements BuildService {
         this.setToken(token)
         this.address = wercker.address
         this.setToken(wercker.token)
-		this.organizations = wercker.organizations
     }
 
     /**

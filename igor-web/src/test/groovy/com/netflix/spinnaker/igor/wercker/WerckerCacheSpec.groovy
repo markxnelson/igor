@@ -14,14 +14,14 @@ import com.netflix.spinnaker.kork.jedis.JedisClientDelegate
 import com.netflix.spinnaker.kork.jedis.RedisClientDelegate
 import com.netflix.spinnaker.igor.wercker.model.Run;
 import redis.clients.jedis.JedisPool
+import spock.lang.Shared
 import spock.lang.Specification
 import spock.lang.Subject
 import spock.lang.Unroll
 
 class WerckerCacheSpec extends Specification {
-
+	
     EmbeddedRedis embeddedRedis = EmbeddedRedis.embed()
-
     RedisClientDelegate redisClientDelegate = new JedisClientDelegate(embeddedRedis.pool as JedisPool)
 
     @Subject
@@ -35,6 +35,7 @@ class WerckerCacheSpec extends Specification {
         embeddedRedis.pool.resource.withCloseable {
             it.flushDB()
         }
+        embeddedRedis.destroy()
     }
 
     void 'lastPollCycleTimestamp get overridden'() {
