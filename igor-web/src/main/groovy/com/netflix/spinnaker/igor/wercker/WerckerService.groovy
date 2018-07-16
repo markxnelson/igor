@@ -255,9 +255,9 @@ class WerckerService implements BuildService {
 				}
 			} catch(retrofit.RetrofitError err) {
 				log.error "Error getting pipelines for ${owner} ${appName} ${err}"
-			}	
+			}
 		}
-		log.debug "getBuilds for ${groupKey} ${appAndPipelineName} ${pipelineId}"
+log.info "getBuilds for ${groupKey} ${appAndPipelineName} ${pipelineId}"
         return pipelineId? werckerClient.getRunsForPipeline(authHeaderValue, pipelineId) : [];
     }
 	
@@ -267,10 +267,52 @@ class WerckerService implements BuildService {
 			   run.getPipeline().name;
 	}
 	
+	String getPipelineId(String appAndPipelineName) {
+		String[] split = appAndPipelineName.split(SPLITOR)
+		String owner = split[0]
+		String appName = split[1]
+		String pipelineName = split[2]
+		String pipelineId = cache.getPipelineID(groupKey, appAndPipelineName)
+		if (pipelineId == null) {
+			try {
+				List<Pipeline> pipelines = werckerClient.getPipelinesForApplication(authHeaderValue, owner, appName)
+				Pipeline matchingPipeline = pipelines.find {pipeline -> pipelineName == pipeline.name}
+				if (matchingPipeline) {
+					pipelineId = matchingPipeline.id;
+					cache.setPipelineID(groupKey, appAndPipelineName, pipelineId)
+				}
+			} catch(retrofit.RetrofitError err) {
+				log.info "Error getting pipelines for ${owner} ${appName} ${err} ${err.getClass()}"
+			}
+		}
+		return pipelineId;
+	}
+	
+	Map<String, List<Run>> getRunsSince(Set<String> pipelines, long since) {
+		long start = System.currentTimeMillis();
+		List<String> pipelineIds = pipelines.collect { getPipelineId(it) };
+log.info "getRunsSince for pipelines:${pipelines} ids:${pipelineIds}"
+		Map<String, List<Run>> pipelineRuns = [:];
+		List<Run> allRuns = werckerClient.getRunsSince(authHeaderValue, branch, pipelineIds, limit, since); 
+log.info "getRunsSince for pipelines:${pipelines} : ${allRuns.size()} runs in ${System.currentTimeMillis() - start}ms!!"
+		allRuns.forEach({ run ->
+			String pipelineKey = pipelineKey(run);
+			run.startedAt = run.startedAt?:run.createdAt;
+			List<Run> runs = pipelineRuns.get(pipelineKey);
+			if (runs) {
+				runs.add(run);
+			} else {
+				runs = [run];
+				pipelineRuns.put(pipelineKey, runs);
+			}
+		});
+		return pipelineRuns;
+	}
+	
 	Map<String, List<Run>> getRunsSince(long since) {
 		long start = System.currentTimeMillis();
 		Map<String, List<Run>> pipelineRuns = [:];
-		List<Run> allRuns = werckerClient.getRunsSince(authHeaderValue, branch, limit, since); 
+		List<Run> allRuns = werckerClient.getRunsSince(authHeaderValue, branch, [], limit, since); 
 		log.debug "getRunsSince ${since} : ${allRuns.size()} runs in ${System.currentTimeMillis() - start}ms!!"
 		allRuns.forEach({ run ->
 			String pipelineKey = pipelineKey(run);

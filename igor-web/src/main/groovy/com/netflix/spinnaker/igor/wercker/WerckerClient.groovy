@@ -50,6 +50,7 @@ interface WerckerClient {
 	List<Run> getRunsSince(
 		@Header('Authorization') String authHeader,
 		@Query('branch') String branch,
+		@Query('pipelineIds') List<String> pipelineIds,
 		@Query('limit') int limit,
 		@Query('since') long since)
 

@@ -94,7 +94,7 @@ class WerckerServiceSpec extends Specification {
 			runOf('3', now-10, appOf('app1', 'org1', []), pipeOf('p3', 'git')),
 			runOf('4', now-10, appOf('app2', 'org1', []), pipeOf('p2', 'git')),
 		]
-		client.getRunsSince(_,_,_,since) >> runs1
+		client.getRunsSince(_,_,_,_,since) >> runs1
 		
 		expect:
 		service.getRunsSince(since).size() == 3

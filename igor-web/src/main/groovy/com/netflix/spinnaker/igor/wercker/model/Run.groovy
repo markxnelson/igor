@@ -80,6 +80,6 @@ class Run {
 //		}
 	
 	public String toString() {
-		return "Run(" +id+"," + application?.name + "/"+pipeline?.name+")";
+		return "Run(" +id+", finishedAt=" + finishedAt+"," + application?.name + "/"+pipeline?.id+")";
 	}
 }
