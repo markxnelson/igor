@@ -23,7 +23,7 @@ import com.netflix.spinnaker.igor.model.BuildServiceProvider
 
 import com.netflix.spinnaker.igor.polling.CommonPollingMonitor
 import com.netflix.spinnaker.igor.polling.DeltaItem
-import com.netflix.spinnaker.igor.polling.LockService
+//import com.netflix.spinnaker.igor.polling.LockService
 import com.netflix.spinnaker.igor.polling.PollContext
 import com.netflix.spinnaker.igor.polling.PollingDelta
 import com.netflix.spinnaker.igor.service.BuildMasters
@@ -60,13 +60,14 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
     WerckerBuildMonitor(IgorConfigurationProperties properties,
                         Registry registry,
                         Optional<DiscoveryClient> discoveryClient,
-                        Optional<LockService> lockService,
+//                        Optional<LockService> lockService,
                         WerckerCache cache,
                         BuildMasters buildMasters,
                         @Value('${wercker.polling.enabled:true}') boolean pollingEnabled,
                         Optional<EchoService> echoService,
                         WerckerProperties werckerProperties) {
-        super(properties, registry, discoveryClient, lockService)
+//        super(properties, registry, discoveryClient, lockService)
+        super(properties, registry, discoveryClient)
         this.cache = cache
         this.buildMasters = buildMasters
         this.pollingEnabled = pollingEnabled

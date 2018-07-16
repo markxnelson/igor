@@ -234,7 +234,7 @@ class WerckerBuildMonitorSpec extends Specification {
 			cfg,
 			new NoopRegistry(),
 			Optional.empty(),
-			Optional.empty(),
+//			Optional.empty(),
 			cache,
 			buildMasters,
 			true,
