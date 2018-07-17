@@ -67,7 +67,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
                         BuildMasters buildMasters,
                         @Value('${wercker.polling.enabled:true}') boolean pollingEnabled,
                         Optional<EchoService> echoService,
-						Optional<Front50Service> front50Service,
+                        Optional<Front50Service> front50Service,
                         WerckerProperties werckerProperties) {
 //        super(properties, registry, discoveryClient, lockService)
         super(properties, registry, discoveryClient)
@@ -75,7 +75,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         this.buildMasters = buildMasters
         this.pollingEnabled = pollingEnabled
         this.echoService = echoService
-		this.front50 = front50Service
+        this.front50 = front50Service
         this.werckerProperties = werckerProperties
     }
 
@@ -184,7 +184,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 	};
 
 	Run getLastFinishedAt(List<Run> runs) {
-		return (runs && runs.size()> 0) ? Collections.max(runs, finishedAtComparator) : null;
+		return (runs && runs.size() > 0) ? Collections.max(runs, finishedAtComparator) : null;
 	}
 
 	static Comparator<Run> startedAtComparator = new Comparator<Run>() {
@@ -233,8 +233,7 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
             List<Run> currentlyBuilding = allBuilds.findAll { it.finishedAt == null }
 			//If there are multiple completed runs, use only the latest finished one
 			log.info "allNewBuilds: ${allBuilds}"
-			Run lastFinished =getLastFinishedAt(allBuilds)
-//          List<Run> completedBuilds = cursor ? allBuilds.findAll { it.finishedAt != null } : (lastFinished? [lastFinished] : [])
+			Run lastFinished = getLastFinishedAt(allBuilds)
 			List<Run> completedBuilds = (lastFinished && lastFinished.finishedAt)? [lastFinished] : []
             log.info("[${master}:${pipeline}] currentlyBuilding: ${currentlyBuilding}" )
             log.info("[${master}:${pipeline}]   completedBuilds: ${completedBuilds}" )

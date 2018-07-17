@@ -67,7 +67,7 @@ class WerckerClientSpec extends Specification {
         setResponse 'getRuns.js'
 		
         when:
-		List<Run> runs = client.getRunsSince(authHeader, branch, ['x','y', 'z'], limit, time)
+		List<Run> runs = client.getRunsSince(authHeader, branch, ['x','y','z'], limit, time)
 		
         then:
 		def request = server.takeRequest()
