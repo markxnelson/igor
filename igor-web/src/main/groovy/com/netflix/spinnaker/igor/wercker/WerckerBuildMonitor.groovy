@@ -127,17 +127,15 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         long since = System.currentTimeMillis() - (Long.valueOf(getPollInterval() * 2 * 1000))
 		if (front50.isPresent()) {
 			Set<String> pipelines = getConfiguredJobs(master);
-			
-			pipelines.forEach( { pipeline -> processRuns(werckerService, master, pipeline, delta, null) } );
-			
-//			try {
-//				Map<String, List<Run>> runs = werckerService.getRunsSince(pipelines, since);
-//				runs.keySet().forEach( { pipeline ->
-//					processRuns(werckerService, master, pipeline, delta, runs.get(pipeline))
-//				} );
-//			} catch (e) {
-//				log.error("Error processing runs for Wercker[{}]", kv("master", master), e)
-//			}
+//			pipelines.forEach( { pipeline -> processRuns(werckerService, master, pipeline, delta, null) } );
+			try {
+				Map<String, List<Run>> runs = werckerService.getRunsSince(pipelines, since);
+				runs.keySet().forEach( { pipeline ->
+					processRuns(werckerService, master, pipeline, delta, runs.get(pipeline))
+				} );
+			} catch (e) {
+				log.error("Error processing runs for Wercker[{}]", kv("master", master), e)
+			}
 			
 		} else {
 		    try {
@@ -158,13 +156,13 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
 		front50.get().getAllPipelineConfigs().forEach({ pipeline ->
 			pipeline['triggers'].forEach({ trigger ->
 			    if (trigger['enabled'] && trigger['type'] == 'wercker' && trigger['master'] == master) {
-					log.info "configured Trigger for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${trigger}"
+					log.debug "configured Trigger for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${trigger}"
 					jobs.add(trigger['job']);
 				}
 			})		
 			pipeline['stages'].forEach({ stage ->
 				if (stage['type'] == 'wercker' && stage['master'] == master) {
-					log.info "configured Stage for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${stage}"
+					log.debug "configured Stage for ${master} pipeline: ${pipeline['application']} ${pipeline['name']} ${stage}"
 					jobs.add(stage['job']);
 				}
 			})
@@ -232,11 +230,11 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
             }
             List<Run> currentlyBuilding = allBuilds.findAll { it.finishedAt == null }
 			//If there are multiple completed runs, use only the latest finished one
-			log.info "allNewBuilds: ${allBuilds}"
+			log.debug "allNewBuilds: ${allBuilds}"
 			Run lastFinished = getLastFinishedAt(allBuilds)
 			List<Run> completedBuilds = (lastFinished && lastFinished.finishedAt)? [lastFinished] : []
-            log.info("[${master}:${pipeline}] currentlyBuilding: ${currentlyBuilding}" )
-            log.info("[${master}:${pipeline}]   completedBuilds: ${completedBuilds}" )
+            log.debug("[${master}:${pipeline}] currentlyBuilding: ${currentlyBuilding}" )
+            log.debug("[${master}:${pipeline}]   completedBuilds: ${completedBuilds}" )
             cursor = cursor?:lastBuildStamp
             Date lowerBound = new Date(cursor)
             if (!igorProperties.spinnaker.build.processBuildsOlderThanLookBackWindow) {

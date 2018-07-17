@@ -63,8 +63,12 @@ interface WerckerClient {
     List<Pipeline> getPipelinesForApplication(
         @Header('Authorization') String authHeader,
         @Path('username') username,
-        @Path('appName') appName
-    )
+        @Path('appName') appName)
+	
+	@GET('/api/v3/pipelines/{pipelineId}')
+	Pipeline getPipeline(
+		@Header('Authorization') String authHeader,
+		@Path('pipelineId') String pipelineId)
 
     @POST('/api/v3/runs')
     Map<String, Object> triggerBuild(

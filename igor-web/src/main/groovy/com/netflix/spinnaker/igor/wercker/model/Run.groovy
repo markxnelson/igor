@@ -30,6 +30,7 @@ class Run {
     String status
 	
 	Owner user
+    String pipelineId
     Pipeline pipeline
     Application application
 

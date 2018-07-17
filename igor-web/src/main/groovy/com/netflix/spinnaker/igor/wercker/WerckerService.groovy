@@ -257,14 +257,18 @@ class WerckerService implements BuildService {
 				log.error "Error getting pipelines for ${owner} ${appName} ${err}"
 			}
 		}
-log.info "getBuilds for ${groupKey} ${appAndPipelineName} ${pipelineId}"
+        log.debug "getBuilds for ${groupKey} ${appAndPipelineName} ${pipelineId}"
         return pipelineId? werckerClient.getRunsForPipeline(authHeaderValue, pipelineId) : [];
     }
 	
-	String pipelineKey(Run run) {
-		return run.getApplication().owner.name + SPLITOR + 
-		       run.getApplication().name + SPLITOR + 
-			   run.getPipeline().name;
+	String pipelineKey(Run run, Map<String, String> pipelineKeys) {
+		if (run.pipelineId) {
+			return pipelineKeys ? pipelineKeys.get(run.pipelineId) : getPipelineName(run.pipelineId);
+		} else {
+            return run.getApplication().owner.name + SPLITOR + 
+                   run.getApplication().name + SPLITOR + 
+                   run.getPipeline().name;
+		}
 	}
 	
 	String getPipelineId(String appAndPipelineName) {
@@ -288,15 +292,34 @@ log.info "getBuilds for ${groupKey} ${appAndPipelineName} ${pipelineId}"
 		return pipelineId;
 	}
 	
+	String getPipelineName(String pipelineId) {
+		String name = cache.getPipelineName(groupKey, pipelineId)
+		if (name == null) {
+			try {
+				Pipeline pipeline = werckerClient.getPipeline(authHeaderValue, pipelineId)
+				if (pipeline && pipeline.application && pipeline.application.owner) {
+					name = pipeline.application.owner.name + SPLITOR + 
+					       pipeline.application.name  + SPLITOR + 
+						   pipeline.name
+					cache.setPipelineID(groupKey, name, pipelineId)
+				}
+			} catch(retrofit.RetrofitError err) {
+				log.info "Error getting pipelines for ${owner} ${appName} ${err} ${err.getClass()}"
+			}
+		}
+		return name;
+	}
+	
 	Map<String, List<Run>> getRunsSince(Set<String> pipelines, long since) {
 		long start = System.currentTimeMillis();
 		List<String> pipelineIds = pipelines.collect { getPipelineId(it) };
-log.info "getRunsSince for pipelines:${pipelines} ids:${pipelineIds}"
+		Map<String, String> pipelineKeys = pipelines.collectEntries { [(getPipelineId(it)) : (it)] };
+		List<String> pids = pipelineKeys.keySet().asList();
 		Map<String, List<Run>> pipelineRuns = [:];
-		List<Run> allRuns = werckerClient.getRunsSince(authHeaderValue, branch, pipelineIds, limit, since); 
-log.info "getRunsSince for pipelines:${pipelines} : ${allRuns.size()} runs in ${System.currentTimeMillis() - start}ms!!"
+		List<Run> allRuns = werckerClient.getRunsSince(authHeaderValue, branch, pids, limit, since); 
+        log.debug "getRunsSince for pipelines:${pipelines} : ${allRuns.size()} runs in ${System.currentTimeMillis() - start}ms!!"
 		allRuns.forEach({ run ->
-			String pipelineKey = pipelineKey(run);
+			String pipelineKey = pipelineKey(run, pipelineKeys);
 			run.startedAt = run.startedAt?:run.createdAt;
 			List<Run> runs = pipelineRuns.get(pipelineKey);
 			if (runs) {
@@ -315,7 +338,7 @@ log.info "getRunsSince for pipelines:${pipelines} : ${allRuns.size()} runs in ${
 		List<Run> allRuns = werckerClient.getRunsSince(authHeaderValue, branch, [], limit, since); 
 		log.debug "getRunsSince ${since} : ${allRuns.size()} runs in ${System.currentTimeMillis() - start}ms!!"
 		allRuns.forEach({ run ->
-			String pipelineKey = pipelineKey(run);
+			String pipelineKey = pipelineKey(run, null);
 			run.startedAt = run.startedAt?:run.createdAt;
 			List<Run> runs = pipelineRuns.get(pipelineKey);
 			if (runs) {
