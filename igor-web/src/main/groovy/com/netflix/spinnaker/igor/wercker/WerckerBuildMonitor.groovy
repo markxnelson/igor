@@ -8,7 +8,7 @@
  */
 package com.netflix.spinnaker.igor.wercker
 
-import static com.netflix.spinnaker.igor.wercker.model.Run.finishedAtComparator
+import static com.netflix.spinnaker.igor.wercker.model.Run.createdAtComparator
 import static com.netflix.spinnaker.igor.wercker.model.Run.startedAtComparator
 import static net.logstash.logback.argument.StructuredArguments.kv
 
@@ -135,8 +135,9 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
         return new PipelinePollingDelta(master: master, items: delta)
     }
 
-    Run getLastFinishedAt(List<Run> runs) {
-        return (runs && runs.size() > 0) ? Collections.max(runs, finishedAtComparator) : null
+    Run getLastCreatedAt(List<Run> runs) {
+        return (runs && runs.size() > 0) ? Collections.max(runs, createdAtComparator) : null
+//        return (runs && runs.size() > 0) ? Collections.max(runs, com.netflix.spinnaker.igor.wercker.model.Run.finishedAtComparator) : null
     }
 
     Run getLastStartedAt(List<Run> runs) {
@@ -172,9 +173,9 @@ class WerckerBuildMonitor extends CommonPollingMonitor<PipelineDelta, PipelinePo
                 return
             }
             List<Run> currentlyBuilding = allBuilds.findAll { it.finishedAt == null }
-            //If there are multiple completed runs, use only the latest finished one
+            //If there are multiple completed runs, use only the latest created one
             log.debug "allNewBuilds: ${allBuilds}"
-            Run lastFinished = getLastFinishedAt(allBuilds)
+            Run lastFinished = getLastCreatedAt(allBuilds)
             List<Run> completedBuilds = (lastFinished && lastFinished.finishedAt)? [lastFinished]: []
             log.debug("[${master}:${pipeline}] currentlyBuilding: ${currentlyBuilding}" )
             log.debug("[${master}:${pipeline}]   completedBuilds: ${completedBuilds}" )

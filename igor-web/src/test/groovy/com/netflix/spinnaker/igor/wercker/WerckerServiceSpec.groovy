@@ -161,6 +161,25 @@ class WerckerServiceSpec extends Specification {
         service.triggerBuildWithParameters(pipeline, [:]) == buildNumber
     }
 
+    void 'test stopRunningBuild'() {
+        def names = [ 'testOrg', 'testApp', 'testPipe']
+        def (org, app, pipe) = names
+        def (pipeline, pipelineId) = [names.join('/'), pipe + "ID"]
+        def runId = 'test_stopRunningBuild'
+        int buildNumber = 9
+        def myToken = "myToken"
+
+        setup:
+        service.token = myToken
+        cache.getRunID(_, pipeline, 9) >> runId
+
+        when:
+        service.stopRunningBuild(pipeline, buildNumber) 
+        
+        then:
+        1 * client.abortRun('Bearer ' + myToken, runId,_) 
+    }
+
     Application appOf(String name, String owner, List<Pipeline> pipelines) {
         return new Application(name: name, owner: new Owner(name: owner), pipelines: pipelines)
     }

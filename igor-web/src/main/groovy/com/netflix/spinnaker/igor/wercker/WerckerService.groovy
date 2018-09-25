@@ -120,7 +120,7 @@ class WerckerService implements BuildService {
         }
         return Result.UNSTABLE
     }
-
+             
     Response stopRunningBuild (String appAndPipelineName, Integer buildNumber){
         String runId = cache.getRunID(groupKey, appAndPipelineName, buildNumber)
         if (runId == null) {
@@ -129,7 +129,7 @@ class WerckerService implements BuildService {
             return
         }
         log.info("Aborting Wercker run id {}", kv("runId", runId))
-        return abortRun(authHeaderValue, runId, [:])
+        return abortRun(runId, [:])
     }
 
     @Override

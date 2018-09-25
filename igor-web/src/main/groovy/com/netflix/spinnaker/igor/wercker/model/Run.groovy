@@ -36,7 +36,10 @@ class Run {
     String pipelineId
     Pipeline pipeline
     Application application
-
+    
+    static final public Comparator<Run> createdAtComparator =
+        comparing({r -> r.createdAt?: r.startedAt}, nullsFirst(naturalOrder()))
+        
     static final public Comparator<Run> startedAtComparator =
         comparing({r -> r.startedAt?: r.createdAt}, nullsFirst(naturalOrder()))
 

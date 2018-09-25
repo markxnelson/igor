@@ -87,9 +87,9 @@ class WerckerBuildMonitorSpec extends Specification {
 
         long now = System.currentTimeMillis();
         List<Run> runs1 = [
-            new Run(id:"b",    startedAt: new Date(now-10)),
-            new Run(id:"a",    startedAt: new Date(now-11), finishedAt: new Date(now-11)),
-            new Run(id:"init", startedAt: new Date(now-12), finishedAt: new Date(now-10)),
+            new Run(id:"b",    createdAt: new Date(now-17), startedAt: new Date(now-10)),
+            new Run(id:"a",    createdAt: new Date(now-16), startedAt: new Date(now-11), finishedAt: new Date(now-11)),
+            new Run(id:"init", createdAt: new Date(now-15), startedAt: new Date(now-12), finishedAt: new Date(now-10)),
         ]
         monitor = monitor(buildMasters)
         monitor.worker = scheduler.createWorker()
@@ -132,9 +132,9 @@ class WerckerBuildMonitorSpec extends Specification {
         when: 'poll at 1 second'
         long now = System.currentTimeMillis();
         List<Run> runs1 = [
-            new Run(id:"b",    startedAt: new Date(now-10)),
-            new Run(id:"a",    startedAt: new Date(now-11), finishedAt: new Date(now-9)),
-            new Run(id:"init", startedAt: new Date(now-12), finishedAt: new Date(now-8)),
+            new Run(id:"b",    createdAt: new Date(now-17), startedAt: new Date(now-10)),
+            new Run(id:"a",    createdAt: new Date(now-16), startedAt: new Date(now-11), finishedAt: new Date(now-9)),
+            new Run(id:"init", createdAt: new Date(now-15), startedAt: new Date(now-12), finishedAt: new Date(now-8)),
         ]
         cache.getLastPollCycleTimestamp(_, _) >> (now - 1000)
         mockService.getRunsSince(_) >> [pipeline: runs1]
@@ -241,6 +241,7 @@ class WerckerBuildMonitorSpec extends Specification {
     }
 
     Run runOf(String id, long startedAt, Long finishedAt, Application app, Pipeline pipe) {
-        return new Run(id: id, startedAt: new Date(startedAt), finishedAt: finishedAt? new Date(finishedAt) : null, application: app, pipeline: pipe)
+        long createdAt = finishedAt? finishedAt - 10 : startedAt
+        return new Run(id: id, createdAt: new Date(createdAt), startedAt: new Date(startedAt), finishedAt: finishedAt? new Date(finishedAt) : null, application: app, pipeline: pipe)
     }
 }
